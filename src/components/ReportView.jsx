@@ -460,7 +460,7 @@ export default function ReportView({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '26px' }}>
       {/* Institutional Header & Action Bar */}
-      <section className="glass" style={{ padding: '0', overflow: 'hidden' }}>
+      <section className="glass report-banner-card" style={{ padding: '0', overflow: 'hidden' }}>
         <div className="report-institution-header">
           <div className="institution-brand-block">
             <img
@@ -479,10 +479,10 @@ export default function ReportView({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div className="report-header-actions">
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-secondary report-action-btn"
               onClick={() => setShowComplaintModal(true)}
             >
               <PlusCircle size={16} />
@@ -491,7 +491,7 @@ export default function ReportView({
 
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary report-action-btn"
               onClick={handleDownloadPDF}
               disabled={downloadingPdf}
               style={{ fontWeight: 700 }}
@@ -499,7 +499,7 @@ export default function ReportView({
               {downloadingPdf ? (
                 <>
                   <div className="spinner" style={{ width: '16px', height: '16px' }} />
-                  <span>Generating Official PDF...</span>
+                  <span>Generating PDF...</span>
                 </>
               ) : (
                 <>
@@ -512,21 +512,11 @@ export default function ReportView({
         </div>
 
         {/* Quick Scope Banner */}
-        <div style={{
-          padding: '12px 28px',
-          background: 'var(--surface)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '10px',
-          fontSize: '12px',
-          color: 'var(--text-muted)'
-        }}>
-          <div>
-            Viewing Student: <strong style={{ color: 'var(--text-main)' }}>{profile.studentName}</strong> (ID: {profile.studentId})
+        <div className="report-scope-banner">
+          <div className="scope-item">
+            Viewing Student: <strong style={{ color: 'var(--text-main)' }}>{profile.studentName}</strong> <span className="scope-id">(ID: {profile.studentId})</span>
           </div>
-          <div>
+          <div className="scope-item">
             Report Scope: <strong>{filters?.label || 'Full History'}</strong>
           </div>
         </div>
@@ -534,9 +524,11 @@ export default function ReportView({
 
       {/* Date Range Filter Bar */}
       <section className="filter-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Filter size={16} color="var(--tpc-purple)" />
-          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>Filter Period:</span>
+        <div className="filter-preset-group">
+          <div className="filter-label-group">
+            <Filter size={16} color="var(--tpc-purple)" />
+            <span className="filter-title">Filter Period:</span>
+          </div>
           <div className="filter-chips">
             <button
               type="button"
@@ -563,20 +555,28 @@ export default function ReportView({
         </div>
 
         <form onSubmit={handleCustomFilter} className="date-range-form">
-          <input
-            type="date"
-            className="date-input"
-            value={customStart}
-            onChange={(e) => setCustomStart(e.target.value)}
-          />
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>to</span>
-          <input
-            type="date"
-            className="date-input"
-            value={customEnd}
-            onChange={(e) => setCustomEnd(e.target.value)}
-          />
-          <button type="submit" className="btn btn-secondary btn-sm" style={{ height: '40px', fontWeight: 700 }}>
+          <div className="date-inputs-group">
+            <div className="date-input-wrap">
+              <span className="date-input-sublabel">From</span>
+              <input
+                type="date"
+                className="date-input"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+              />
+            </div>
+            <span className="date-separator">to</span>
+            <div className="date-input-wrap">
+              <span className="date-input-sublabel">To</span>
+              <input
+                type="date"
+                className="date-input"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+              />
+            </div>
+          </div>
+          <button type="submit" className="btn btn-secondary btn-sm filter-apply-btn">
             Apply Filter
           </button>
         </form>

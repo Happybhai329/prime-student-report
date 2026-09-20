@@ -73,10 +73,9 @@ export default function TopNavbar({
         {hasActiveStudent && (
           <button
             type="button"
-            className="btn btn-secondary btn-icon"
+            className="btn btn-secondary btn-icon nav-back-btn"
             onClick={onBackToSearch}
             title="Back to Student Search"
-            style={{ width: '42px', height: '42px' }}
           >
             <ArrowLeft size={18} />
           </button>
@@ -88,7 +87,7 @@ export default function TopNavbar({
           className="tpc-logo"
         />
 
-        <div className="brand-info">
+        <div className={`brand-info ${hasActiveStudent ? 'hide-on-mobile-student' : ''}`}>
           <span className="brand-title">The Prime Classes</span>
           <span className="brand-tagline">
             RIMC &bull; RMS &bull; SAINIK SCHOOL &bull; FOUNDATION
@@ -100,20 +99,20 @@ export default function TopNavbar({
         {/* Sync Status Button */}
         <button
           type="button"
-          className="btn btn-secondary btn-sm"
+          className="btn btn-secondary btn-sm nav-sync-btn"
           onClick={handleManualSync}
           disabled={syncing}
           title={lastSyncLabel ? `Last synchronized at ${lastSyncLabel}` : 'Sync with Google Sheets'}
-          style={{ height: '40px', gap: '8px' }}
         >
           <RefreshCw
             size={15}
             style={{
               animation: syncing ? 'spin 0.9s linear infinite' : 'none',
-              color: syncing ? 'var(--tpc-purple)' : 'var(--tpc-green)'
+              color: syncing ? 'var(--tpc-purple)' : 'var(--tpc-green)',
+              flexShrink: 0
             }}
           />
-          <span style={{ fontSize: '12px', fontWeight: 600 }}>
+          <span className="sync-btn-label">
             {syncing ? 'Syncing...' : lastSyncLabel ? `Synced ${lastSyncLabel}` : 'Sync Data'}
           </span>
         </button>
@@ -134,10 +133,9 @@ export default function TopNavbar({
         {/* Logout */}
         <button
           type="button"
-          className="btn btn-secondary btn-icon"
+          className="btn btn-secondary btn-icon nav-logout-btn"
           onClick={onLogout}
           title="Sign out of Dashboard"
-          style={{ width: '42px', height: '42px' }}
         >
           <LogOut size={18} color="var(--danger)" />
         </button>
