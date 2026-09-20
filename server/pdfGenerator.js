@@ -347,50 +347,7 @@ export function generateStudentReportPDF(reportBundle, teacher = {}) {
 
   currentY = doc.lastAutoTable.finalY + 24;
 
-  // --- Section 6: Official Institutional Signatures ---
-  if (currentY > pageHeight - 75) {
-    doc.addPage();
-    currentY = margin + 20;
-  }
 
-  const sigY = currentY + 18;
-  doc.setDrawColor(148, 163, 184);
-  doc.setLineDashPattern([2, 2], 0);
-
-  // Line 1: Class Teacher
-  doc.line(margin + 20, sigY, margin + 140, sigY);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42);
-  doc.text('Class Teacher', margin + 80, sigY + 12, { align: 'center' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('The Prime Classes', margin + 80, sigY + 22, { align: 'center' });
-
-  // Line 2: Academic Coordinator
-  doc.line(pageWidth / 2 - 60, sigY, pageWidth / 2 + 60, sigY);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42);
-  doc.text('Academic Coordinator', pageWidth / 2, sigY + 12, { align: 'center' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Evaluation Cell', pageWidth / 2, sigY + 22, { align: 'center' });
-
-  // Line 3: Principal / Director
-  doc.line(pageWidth - margin - 140, sigY, pageWidth - margin - 20, sigY);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42);
-  doc.text('Director / Principal', pageWidth - margin - 80, sigY + 12, { align: 'center' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Official Seal & Signature', pageWidth - margin - 80, sigY + 22, { align: 'center' });
-
-  doc.setLineDashPattern([], 0);
 
   // Footer on all pages
   const totalPages = doc.internal.getNumberOfPages();
