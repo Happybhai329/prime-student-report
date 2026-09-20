@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: prime-student-report
+    env: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_EMAIL
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+        sync: false
+      - key: EMPLOYEE_DB_ID
+        value: 1AxdiOpaij8Lnx0TV5iMhgVlADfN0LeXzwOdmbzmrlGA
+      - key: ACADEMIC_DB_ID
+        value: 1DK4OpEdEDh2z_Ng9vIHbci41yBLSQ2m4ZXI7sqA7mJs
+      - key: TEACHER_APP_DB_ID
+        value: 1IR48k48Koil2lHv_coP8yBmLYUcGBOy_9xgdd9t6YR8
