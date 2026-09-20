@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, ShieldCheck, AlertCircle, Sparkles, Lock } from 'lucide-react';
+import { ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 
 export default function LoginView({ onLoginSuccess }) {
   const [employeeId, setEmployeeId] = useState('');
@@ -156,30 +156,12 @@ export default function LoginView({ onLoginSuccess }) {
           color: 'var(--text-muted)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: 'center',
+          gap: '6px',
           border: '1px solid var(--stroke)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <ShieldCheck size={16} color="var(--tpc-green)" />
-            <span>Active Faculty Authorization</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setEmployeeId('TPC2585AB')}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--tpc-purple)',
-              cursor: 'pointer',
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            <Sparkles size={13} />
-            Quick Demo ID
-          </button>
+          <ShieldCheck size={16} color="var(--tpc-green)" />
+          <span>Active Faculty Authorization Required</span>
         </div>
       </div>
     </div>
