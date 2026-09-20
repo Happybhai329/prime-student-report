@@ -115,7 +115,7 @@ export default function LoginView({ onLoginSuccess }) {
                 id="empId"
                 type="text"
                 className="form-input"
-                placeholder="e.g. TPC2585AB"
+                placeholder="Enter Employee ID"
                 value={employeeId}
                 onChange={(e) => {
                   setEmployeeId(e.target.value.toUpperCase());
