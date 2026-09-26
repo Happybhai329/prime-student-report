@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   Download,
   Calendar,
@@ -64,6 +64,7 @@ export default function ReportView({
   const [customEnd, setCustomEnd] = useState('');
   const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [selectedExamType, setSelectedExamType] = useState('ALL');
 
   // Chart references for capturing canvas images
   const attChartRef = useRef(null);
@@ -74,6 +75,101 @@ export default function ReportView({
   if (!reportData) return null;
 
   const { profile, attendance, homework, results, complaints, filters } = reportData;
+
+  // Extract all unique available exam types
+  const availableExamTypes = useMemo(() => {
+    if (results?.availableExamTypes && results.availableExamTypes.length > 0) {
+      return results.availableExamTypes;
+    }
+    const types = Array.from(new Set((results?.rows || []).map(r => (r.examType || '').trim()).filter(Boolean))).sort();
+    return ['ALL', ...types];
+  }, [results]);
+
+  // Filter exam rows based on selected exam type
+  const filteredExamRows = useMemo(() => {
+    const rows = results?.rows || [];
+    if (selectedExamType === 'ALL') return rows;
+    return rows.filter(r => (r.examType || '').trim() === selectedExamType);
+  }, [results, selectedExamType]);
+
+  // Reactive metrics computation
+  const examMetrics = useMemo(() => {
+    const rows = filteredExamRows;
+    const count = rows.length;
+    const pcts = rows.map(r => Number(r.percentage) || 0);
+    const marks = rows.map(r => Number(r.totalObtainedMarks) || 0);
+    const maxs = rows.map(r => Number(r.examTotalMaxMarks) || 0);
+    const uniqueMaxs = new Set(maxs.filter(m => m > 0));
+
+    const avgPercentage = count ? Number((pcts.reduce((a, b) => a + b, 0) / count).toFixed(1)) : 0;
+    const highestPercentage = count ? Math.max(...pcts) : 0;
+    const lowestPercentage = count ? Math.min(...pcts) : 0;
+
+    const avgMarks = count ? Number((marks.reduce((a, b) => a + b, 0) / count).toFixed(1)) : 0;
+    const referenceMax = uniqueMaxs.size === 1 ? Array.from(uniqueMaxs)[0] : (maxs.length ? Number((maxs.reduce((a, b) => a + b, 0) / count).toFixed(1)) : 0);
+    const highestScore = count ? Math.max(...marks) : 0;
+    const lowestScore = count ? Math.min(...marks) : 0;
+
+    return {
+      count,
+      avgPercentage,
+      highestPercentage,
+      lowestPercentage,
+      avgMarks,
+      referenceMax,
+      isConsistentMax: uniqueMaxs.size === 1,
+      highestScore,
+      lowestScore
+    };
+  }, [filteredExamRows]);
+
+  // Dynamic Subject-Wise stats filtered by exam type
+  const filteredSubjectWise = useMemo(() => {
+    if (selectedExamType === 'ALL') {
+      return results?.subjectWise || [];
+    }
+    const subMap = {};
+    filteredExamRows.forEach(test => {
+      (test.subjects || []).forEach(s => {
+        if (!s.subjectName) return;
+        if (!subMap[s.subjectName]) {
+          subMap[s.subjectName] = { obtained: 0, maxMarks: 0, count: 0 };
+        }
+        subMap[s.subjectName].obtained += Number(s.subjectObtainedMarks) || 0;
+        subMap[s.subjectName].maxMarks += Number(s.subjectMaxMarks) || 0;
+        subMap[s.subjectName].count += 1;
+      });
+    });
+    if (Object.keys(subMap).length === 0) {
+      return [];
+    }
+    return Object.keys(subMap).map(subName => {
+      const stats = subMap[subName];
+      const pct = stats.maxMarks > 0 ? Number(((stats.obtained / stats.maxMarks) * 100).toFixed(1)) : 0;
+      let status = 'Average';
+      if (pct >= 80) status = 'Strong';
+      else if (pct < 50) status = 'Weak';
+      return {
+        subjectName: subName,
+        averageObtainedMarks: Number((stats.obtained / stats.count).toFixed(1)),
+        averageMaxMarks: Number((stats.maxMarks / stats.count).toFixed(1)),
+        percentage: pct,
+        status
+      };
+    });
+  }, [results, selectedExamType, filteredExamRows]);
+
+  // Dynamic Performance Trend data filtered by exam type
+  const filteredTrend = useMemo(() => {
+    return filteredExamRows.map(r => ({
+      label: r.examDate !== '-' ? r.examDate : r.testId,
+      marks: r.totalObtainedMarks || 0,
+      maxMarks: r.examTotalMaxMarks || 0,
+      percentage: r.percentage || 0,
+      rank: r.rank || null,
+      examType: r.examType || '-'
+    }));
+  }, [filteredExamRows]);
 
   // Preset Date Handlers
   const handlePreset = (preset) => {
@@ -266,16 +362,40 @@ export default function ReportView({
 
       // --- 2. Key Performance Highlights ---
       addHeading('2. Performance Highlights & Summary');
+      const kpiPdfRows = [
+        ['Overall Attendance', `${attendance.summary.attendancePercentage || 0}%`, `Present: ${attendance.summary.present || 0} / Total Classes: ${attendance.summary.totalClasses || 0}`],
+        ['Homework Completion Rate', `${homework.summary.completionRate || 0}%`, `Completed: ${homework.summary.completedHomework || 0} / Total Tasks: ${homework.summary.totalHomework || 0}`]
+      ];
+
+      if (selectedExamType === 'ALL') {
+        kpiPdfRows.push([
+          'Overall Academic Performance',
+          `${examMetrics.avgPercentage}%`,
+          `Simple Average of Percentages across ${examMetrics.count} exams (all types)`
+        ]);
+        kpiPdfRows.push([
+          'Percentage Extremes (High / Low)',
+          `${examMetrics.highestPercentage}% / ${examMetrics.lowestPercentage}%`,
+          `Highest: ${examMetrics.highestPercentage}% | Lowest: ${examMetrics.lowestPercentage}%`
+        ]);
+      } else {
+        kpiPdfRows.push([
+          `Average Score (${selectedExamType})`,
+          examMetrics.referenceMax > 0 ? `${examMetrics.avgMarks} / ${examMetrics.referenceMax}` : `${examMetrics.avgMarks}`,
+          `Average %: ${examMetrics.avgPercentage}% across ${examMetrics.count} exams`
+        ]);
+        kpiPdfRows.push([
+          'Score Extremes (High / Low)',
+          `${examMetrics.highestScore} / ${examMetrics.lowestScore}`,
+          `Highest: ${examMetrics.highestScore} (${examMetrics.highestPercentage}%) | Lowest: ${examMetrics.lowestScore} (${examMetrics.lowestPercentage}%)`
+        ]);
+      }
+
       runAutoTable(doc, {
         startY: currentY,
         margin: { left: margin, right: margin },
         head: [['Key Indicator', 'Score / Status', 'Details & Context']],
-        body: [
-          ['Overall Attendance', `${attendance.summary.attendancePercentage || 0}%`, `Present: ${attendance.summary.present || 0} / Total Classes: ${attendance.summary.totalClasses || 0}`],
-          ['Homework Completion Rate', `${homework.summary.completionRate || 0}%`, `Completed: ${homework.summary.completedHomework || 0} / Total Tasks: ${homework.summary.totalHomework || 0}`],
-          ['Average Examination Score', `${results.summary.averageMarks || 0}`, `Average %: ${results.summary.averagePercentage || 0}% across ${results.summary.totalTests || 0} tests`],
-          ['Score Extremes (High / Low)', `${results.summary.highestScore || 0} / ${results.summary.lowestScore || 0}`, `Highest Marks Achieved: ${results.summary.highestScore || 0}`]
-        ],
+        body: kpiPdfRows,
         theme: 'grid',
         headStyles: { fillColor: [107, 33, 168], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
         styles: { fontSize: 9, cellPadding: 4 },
@@ -305,9 +425,12 @@ export default function ReportView({
         doc.addPage();
         currentY = margin;
       }
-      addHeading('3. Subject-Wise Strength & Weakness Analysis');
+      const subjectSectionTitle = selectedExamType === 'ALL'
+        ? '3. Subject-Wise Strength & Weakness Analysis'
+        : `3. Subject-Wise Strength & Weakness Analysis (${selectedExamType})`;
+      addHeading(subjectSectionTitle);
 
-      const subjectRows = (results.subjectWise || []).map((row) => {
+      const subjectRows = filteredSubjectWise.map((row) => {
         let statusColor = [217, 119, 6]; // Amber
         if (row.percentage >= 80) statusColor = [22, 163, 74]; // Green
         else if (row.percentage < 50) statusColor = [220, 38, 38]; // Red
@@ -338,8 +461,11 @@ export default function ReportView({
         doc.addPage();
         currentY = margin;
       }
-      addHeading('4. Detailed Examination History');
-      const examRows = (results.rows || []).slice(0, 12).map((r) => [
+      const examSectionTitle = selectedExamType === 'ALL'
+        ? '4. Detailed Examination History'
+        : `4. Detailed Examination History (${selectedExamType})`;
+      addHeading(examSectionTitle);
+      const examRows = (filteredExamRows || []).slice(0, 15).map((r) => [
         r.examDate || '-',
         r.testId || '-',
         r.examType || '-',
@@ -540,6 +666,42 @@ export default function ReportView({
         </form>
       </section>
 
+      {/* Dynamic Examination Type Filter */}
+      <section className="filter-bar exam-filter-bar">
+        <div className="filter-preset-group">
+          <div className="filter-label-group">
+            <Filter size={16} style={{ color: 'var(--tpc-purple)' }} />
+            <span className="filter-title">Exam Type Filter:</span>
+          </div>
+          <div className="filter-chips">
+            {availableExamTypes.map((type) => {
+              const isSelected = selectedExamType === type;
+              const countForType = type === 'ALL'
+                ? (results?.rows || []).length
+                : (results?.rows || []).filter(r => (r.examType || '').trim() === type).length;
+
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  className={`chip-btn ${isSelected ? 'active' : ''}`}
+                  onClick={() => setSelectedExamType(type)}
+                >
+                  <span>{type}</span>
+                  <span className="chip-badge">{countForType}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="filter-status-indicator">
+          <span className="badge badge-primary">
+            {selectedExamType === 'ALL' ? 'Mode: All Exam Types (Avg %)' : `Selected: ${selectedExamType}`}
+          </span>
+        </div>
+      </section>
+
       {/* Key Performance Metric Cards */}
       <section className="kpi-grid">
         {/* Attendance */}
@@ -570,31 +732,47 @@ export default function ReportView({
           </div>
         </div>
 
-        {/* Average Marks */}
+        {/* Average Marks / Overall Performance */}
         <div className="stat-card">
           <div className="stat-header">
-            <span className="stat-label">Average Score</span>
+            <span className="stat-label">
+              {selectedExamType === 'ALL' ? 'Overall Performance' : `Average Score (${selectedExamType})`}
+            </span>
             <div className="stat-icon" style={{ color: 'var(--tpc-purple)', background: 'var(--tpc-purple-subtle)' }}>
-              <Award size={20} />
+              {selectedExamType === 'ALL' ? <TrendingUp size={20} /> : <Award size={20} />}
             </div>
           </div>
-          <div className="stat-value">{results.summary.averageMarks || 0}</div>
+          <div className="stat-value">
+            {selectedExamType === 'ALL'
+              ? `${examMetrics.avgPercentage}%`
+              : `${examMetrics.avgMarks}${examMetrics.referenceMax > 0 ? ` / ${examMetrics.referenceMax}` : ''}`}
+          </div>
           <div className="stat-footer">
-            Across {results.summary.totalTests || 0} tests (High: {results.summary.highestScore || 0})
+            {selectedExamType === 'ALL'
+              ? `Avg % across ${examMetrics.count} tests (all exam types)`
+              : `Average: ${examMetrics.avgPercentage}% across ${examMetrics.count} tests`}
           </div>
         </div>
 
-        {/* Average Percentage */}
+        {/* Extremes / Remarks */}
         <div className="stat-card accent-secondary">
           <div className="stat-header">
-            <span className="stat-label">Average Percentage</span>
+            <span className="stat-label">
+              {selectedExamType === 'ALL' ? 'Score Extremes' : `Score Range (${selectedExamType})`}
+            </span>
             <div className="stat-icon" style={{ color: '#0284c7', background: '#e0f2fe' }}>
               <Percent size={20} />
             </div>
           </div>
-          <div className="stat-value">{results.summary.averagePercentage || 0}%</div>
+          <div className="stat-value">
+            {selectedExamType === 'ALL'
+              ? `${examMetrics.highestPercentage}% / ${examMetrics.lowestPercentage}%`
+              : `${examMetrics.highestScore} / ${examMetrics.lowestScore}`}
+          </div>
           <div className="stat-footer">
-            Disciplinary Observations: {complaints.summary.complaintCount || 0}
+            {selectedExamType === 'ALL'
+              ? `High: ${examMetrics.highestPercentage}% | Low: ${examMetrics.lowestPercentage}%`
+              : `High: ${examMetrics.highestScore} (${examMetrics.highestPercentage}%) | Low: ${examMetrics.lowestScore} (${examMetrics.lowestPercentage}%)`}
           </div>
         </div>
       </section>
@@ -809,7 +987,9 @@ export default function ReportView({
       <section className="chart-card">
         <div className="chart-head">
           <div>
-            <h3 className="chart-title">Subject-Wise Strength & Weakness Analysis</h3>
+            <h3 className="chart-title">
+              Subject-Wise Strength & Weakness Analysis {selectedExamType !== 'ALL' ? `(${selectedExamType})` : ''}
+            </h3>
             <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
               Standard Classification: Strong (&ge; 80%), Average (50% - 79%), Weak (&lt; 50%)
             </p>
@@ -817,7 +997,7 @@ export default function ReportView({
         </div>
 
         <div className="chart-frame" style={{ height: '260px' }}>
-          <SubjectWiseChart ref={subjChartRef} subjectWise={results.subjectWise} />
+          <SubjectWiseChart ref={subjChartRef} subjectWise={filteredSubjectWise} />
         </div>
 
         <div className="table-wrap">
@@ -832,14 +1012,14 @@ export default function ReportView({
               </tr>
             </thead>
             <tbody>
-              {results.subjectWise.length === 0 ? (
+              {filteredSubjectWise.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                    No subject examination data recorded
+                    No subject examination data recorded {selectedExamType !== 'ALL' ? `for ${selectedExamType}` : ''}
                   </td>
                 </tr>
               ) : (
-                results.subjectWise.map((sub, idx) => (
+                filteredSubjectWise.map((sub, idx) => (
                   <tr key={idx}>
                     <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{sub.subjectName}</td>
                     <td>{sub.averageObtainedMarks}</td>
@@ -869,12 +1049,14 @@ export default function ReportView({
       {/* Examination Performance Trend & History */}
       <section className="chart-card">
         <div className="chart-head">
-          <h3 className="chart-title">Examination Performance History & Trend</h3>
-          <span className="badge badge-neutral">Total Tests: {results.summary.totalTests || 0}</span>
+          <h3 className="chart-title">
+            Examination Performance History & Trend {selectedExamType !== 'ALL' ? `(${selectedExamType})` : ''}
+          </h3>
+          <span className="badge badge-neutral">Total Tests: {filteredExamRows.length}</span>
         </div>
 
         <div className="chart-frame" style={{ height: '260px' }}>
-          <PerformanceTrendChart ref={trendChartRef} trend={results.trend} />
+          <PerformanceTrendChart ref={trendChartRef} trend={filteredTrend} />
         </div>
 
         <div className="table-wrap" style={{ maxHeight: '300px', overflowY: 'auto' }}>
@@ -891,14 +1073,14 @@ export default function ReportView({
               </tr>
             </thead>
             <tbody>
-              {results.rows.length === 0 ? (
+              {filteredExamRows.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                    No exam records found for this student
+                    No exam records found {selectedExamType !== 'ALL' ? `for ${selectedExamType}` : ''}
                   </td>
                 </tr>
               ) : (
-                results.rows.map((row, idx) => (
+                filteredExamRows.map((row, idx) => (
                   <tr key={idx}>
                     <td>{row.examDate}</td>
                     <td style={{ fontWeight: 600 }}>{row.testId}</td>

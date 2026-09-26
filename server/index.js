@@ -404,30 +404,68 @@ app.get('/api/students/:id/report', async (req, res) => {
       subjectMap[subject].count += 1;
     });
 
-    const testRows = Object.values(testsByKey).map(test => ({
-      testId: test.testId,
-      examDate: test.examDate,
-      examType: test.examType,
-      batchName: test.batchName,
-      totalObtainedMarks: test.totalObtained || 0,
-      examTotalMaxMarks: test.totalMax || 0,
-      percentage: test.totalMax ? round((test.totalObtained / test.totalMax) * 100, 1) : 0,
-      rank: test.rank,
-      subjects: test.subjects
-    }));
+    const testRows = Object.values(testsByKey).map(test => {
+      const totalObtained = Number(test.totalObtained) || 0;
+      const totalMax = Number(test.totalMax) || 0;
+      const validPercentage = (totalMax > 0 && totalObtained <= totalMax)
+        ? round((totalObtained / totalMax) * 100, 1)
+        : (totalMax > 0 ? 100 : 0);
+
+      return {
+        testId: test.testId,
+        examDate: test.examDate,
+        examType: (test.examType || '-').trim(),
+        batchName: test.batchName,
+        totalObtainedMarks: totalObtained,
+        examTotalMaxMarks: totalMax,
+        percentage: validPercentage,
+        rank: test.rank,
+        subjects: test.subjects
+      };
+    });
 
     testRows.sort((a, b) => parseDateKey(a.examDate) - parseDateKey(b.examDate));
 
-    const totalTests = testRows.length;
-    const allMarks = testRows.map(r => r.totalObtainedMarks || 0);
-    const averageMarks = allMarks.length ? round(allMarks.reduce((a, b) => a + b, 0) / allMarks.length, 1) : 0;
-    const highestScore = allMarks.length ? Math.max(...allMarks) : 0;
-    const lowestScore = allMarks.length ? Math.min(...allMarks) : 0;
+    // Extract all unique examination types
+    const rawExamTypes = Array.from(new Set(testRows.map(r => (r.examType || '').trim()).filter(Boolean))).sort();
+    const availableExamTypes = ['ALL', ...rawExamTypes];
 
-    const allPercentages = testRows.map(r => r.percentage || 0);
-    const averagePercentage = allPercentages.length
-      ? round(allPercentages.reduce((a, b) => a + b, 0) / allPercentages.length, 1)
-      : 0;
+    // Compute metrics partitioned by examType
+    const byExamType = {};
+    availableExamTypes.forEach(type => {
+      const rows = type === 'ALL' ? testRows : testRows.filter(r => (r.examType || '').trim() === type);
+      const pcts = rows.map(r => r.percentage);
+      const marks = rows.map(r => r.totalObtainedMarks);
+      const maxs = rows.map(r => r.examTotalMaxMarks);
+      const uniqueMaxs = new Set(maxs.filter(m => m > 0));
+
+      byExamType[type] = {
+        totalTests: rows.length,
+        averagePercentage: pcts.length ? round(pcts.reduce((a, b) => a + b, 0) / pcts.length, 1) : 0,
+        highestPercentage: pcts.length ? round(Math.max(...pcts), 1) : 0,
+        lowestPercentage: pcts.length ? round(Math.min(...pcts), 1) : 0,
+        averageMarks: marks.length ? round(marks.reduce((a, b) => a + b, 0) / marks.length, 1) : 0,
+        averageMaxMarks: maxs.length ? round(maxs.reduce((a, b) => a + b, 0) / maxs.length, 1) : 0,
+        referenceMax: uniqueMaxs.size === 1 ? Array.from(uniqueMaxs)[0] : (maxs.length ? round(maxs.reduce((a, b) => a + b, 0) / maxs.length, 1) : 0),
+        isConsistentMax: uniqueMaxs.size === 1,
+        highestScore: marks.length ? Math.max(...marks) : 0,
+        lowestScore: marks.length ? Math.min(...marks) : 0
+      };
+    });
+
+    const requestedExamType = (req.query.examType || 'ALL').trim();
+    const activeExamSummary = byExamType[requestedExamType] || byExamType['ALL'] || {
+      totalTests: 0,
+      averagePercentage: 0,
+      highestPercentage: 0,
+      lowestPercentage: 0,
+      averageMarks: 0,
+      averageMaxMarks: 0,
+      referenceMax: 0,
+      isConsistentMax: true,
+      highestScore: 0,
+      lowestScore: 0
+    };
 
     const subjectWise = Object.keys(subjectMap).map(subName => {
       const stats = subjectMap[subName];
@@ -450,17 +488,14 @@ app.get('/api/students/:id/report', async (req, res) => {
       marks: r.totalObtainedMarks || 0,
       maxMarks: r.examTotalMaxMarks || 0,
       percentage: r.percentage || 0,
-      rank: r.rank || null
+      rank: r.rank || null,
+      examType: r.examType || '-'
     }));
 
     const results = {
-      summary: {
-        totalTests,
-        averageMarks,
-        averagePercentage,
-        highestScore,
-        lowestScore
-      },
+      summary: activeExamSummary,
+      availableExamTypes,
+      byExamType,
       subjectWise,
       trend,
       rows: testRows
@@ -554,7 +589,7 @@ app.post('/api/students/:id/complaint', async (req, res) => {
 app.post('/api/students/:id/pdf', async (req, res) => {
   try {
     const studentId = cleanText(req.params.id);
-    const { reportBundle, teacher } = req.body;
+    const { reportBundle, teacher, options } = req.body;
 
     let bundle = reportBundle;
     if (!bundle) {
@@ -569,7 +604,7 @@ app.post('/api/students/:id/pdf', async (req, res) => {
       return res.status(400).json({ error: 'Please supply reportBundle in request body.' });
     }
 
-    const pdfBuffer = generateStudentReportPDF(bundle, teacher || {});
+    const pdfBuffer = generateStudentReportPDF(bundle, teacher || {}, options || {});
     const filename = `The_Prime_Student_Report_${studentId}.pdf`;
 
     res.setHeader('Content-Type', 'application/pdf');

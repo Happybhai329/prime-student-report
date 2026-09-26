@@ -21,7 +21,7 @@ const autoTable = typeof autoTablePlugin === 'function'
  * @param {Object} teacher - Active faculty details
  * @returns {Buffer} PDF binary buffer
  */
-export function generateStudentReportPDF(reportBundle, teacher = {}) {
+export function generateStudentReportPDF(reportBundle, teacher = {}, options = {}) {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'pt',
@@ -38,6 +38,27 @@ export function generateStudentReportPDF(reportBundle, teacher = {}) {
   const results = reportBundle.results || { summary: {}, subjectWise: [], rows: [] };
   const complaints = reportBundle.complaints || { summary: {}, rows: [] };
   const filterLabel = (reportBundle.filters && reportBundle.filters.label) || 'Full History';
+  const selectedExamType = (options.examType || reportBundle.selectedExamType || 'ALL').trim();
+
+  const allExamRows = results.rows || [];
+  const targetExamRows = selectedExamType === 'ALL'
+    ? allExamRows
+    : allExamRows.filter(r => (r.examType || '').trim() === selectedExamType);
+
+  const count = targetExamRows.length;
+  const pcts = targetExamRows.map(r => Number(r.percentage) || 0);
+  const marks = targetExamRows.map(r => Number(r.totalObtainedMarks) || 0);
+  const maxs = targetExamRows.map(r => Number(r.examTotalMaxMarks) || 0);
+  const uniqueMaxs = new Set(maxs.filter(m => m > 0));
+
+  const avgPercentage = count ? Number((pcts.reduce((a, b) => a + b, 0) / count).toFixed(1)) : 0;
+  const highestPercentage = count ? Math.max(...pcts) : 0;
+  const lowestPercentage = count ? Math.min(...pcts) : 0;
+
+  const avgMarks = count ? Number((marks.reduce((a, b) => a + b, 0) / count).toFixed(1)) : 0;
+  const referenceMax = uniqueMaxs.size === 1 ? Array.from(uniqueMaxs)[0] : (maxs.length ? Number((maxs.reduce((a, b) => a + b, 0) / count).toFixed(1)) : 0);
+  const highestScore = count ? Math.max(...marks) : 0;
+  const lowestScore = count ? Math.min(...marks) : 0;
 
   let currentY = margin;
 
@@ -189,18 +210,32 @@ export function generateStudentReportPDF(reportBundle, teacher = {}) {
       'Homework Completion Rate',
       `${hwSummary.completionRate || 0}%`,
       `Completed: ${hwSummary.completedHomework || 0} / Total Tasks: ${hwSummary.totalHomework || 0}`
-    ],
-    [
-      'Average Examination Score',
-      `${resSummary.averageMarks || 0}`,
-      `Average %: ${resSummary.averagePercentage || 0}% across ${resSummary.totalTests || 0} tests`
-    ],
-    [
-      'Score Extremes (High / Low)',
-      `${resSummary.highestScore || 0} / ${resSummary.lowestScore || 0}`,
-      `Highest Marks Achieved: ${resSummary.highestScore || 0}`
     ]
   ];
+
+  if (selectedExamType === 'ALL') {
+    kpiData.push([
+      'Overall Academic Performance',
+      `${avgPercentage}%`,
+      `Simple Average of Percentages across ${count} exams (all exam types)`
+    ]);
+    kpiData.push([
+      'Percentage Extremes (High / Low)',
+      `${highestPercentage}% / ${lowestPercentage}%`,
+      `Highest: ${highestPercentage}% | Lowest: ${lowestPercentage}%`
+    ]);
+  } else {
+    kpiData.push([
+      `Average Score (${selectedExamType})`,
+      referenceMax > 0 ? `${avgMarks} / ${referenceMax}` : `${avgMarks}`,
+      `Average %: ${avgPercentage}% across ${count} exams`
+    ]);
+    kpiData.push([
+      'Score Extremes (High / Low)',
+      referenceMax > 0 ? `${highestScore} / ${lowestScore}` : `${highestScore} / ${lowestScore}`,
+      `Highest: ${highestScore} (${highestPercentage}%) | Lowest: ${lowestScore} (${lowestPercentage}%)`
+    ]);
+  }
 
   autoTable(doc, {
     startY: currentY,
@@ -220,9 +255,44 @@ export function generateStudentReportPDF(reportBundle, teacher = {}) {
   currentY = doc.lastAutoTable.finalY + 14;
 
   // --- Section 3: Subject-Wise Strength & Weakness Analysis ---
-  addSectionHeader('3. Subject-Wise Strength & Weakness Analysis');
+  const subjectSectionTitle = selectedExamType === 'ALL'
+    ? '3. Subject-Wise Strength & Weakness Analysis'
+    : `3. Subject-Wise Strength & Weakness Analysis (${selectedExamType})`;
+  addSectionHeader(subjectSectionTitle);
 
-  const subjectRows = (results.subjectWise || []).map(row => {
+  let activeSubjectWise = results.subjectWise || [];
+  if (selectedExamType !== 'ALL') {
+    const subMap = {};
+    targetExamRows.forEach(test => {
+      (test.subjects || []).forEach(s => {
+        if (!s.subjectName) return;
+        if (!subMap[s.subjectName]) {
+          subMap[s.subjectName] = { obtained: 0, maxMarks: 0, count: 0 };
+        }
+        subMap[s.subjectName].obtained += Number(s.subjectObtainedMarks) || 0;
+        subMap[s.subjectName].maxMarks += Number(s.subjectMaxMarks) || 0;
+        subMap[s.subjectName].count += 1;
+      });
+    });
+    if (Object.keys(subMap).length > 0) {
+      activeSubjectWise = Object.keys(subMap).map(subName => {
+        const stats = subMap[subName];
+        const pct = stats.maxMarks > 0 ? Number(((stats.obtained / stats.maxMarks) * 100).toFixed(1)) : 0;
+        let status = 'Average';
+        if (pct >= 80) status = 'Strong';
+        else if (pct < 50) status = 'Weak';
+        return {
+          subjectName: subName,
+          averageObtainedMarks: Number((stats.obtained / stats.count).toFixed(1)),
+          averageMaxMarks: Number((stats.maxMarks / stats.count).toFixed(1)),
+          percentage: pct,
+          status
+        };
+      });
+    }
+  }
+
+  const subjectRows = activeSubjectWise.map(row => {
     let statusColor = [217, 119, 6]; // Amber
     if (row.percentage >= 80) {
       statusColor = [22, 163, 74]; // Green
@@ -272,9 +342,12 @@ export function generateStudentReportPDF(reportBundle, teacher = {}) {
   }
 
   // --- Section 4: Detailed Exam Records ---
-  addSectionHeader('4. Detailed Examination History');
+  const examSectionTitle = selectedExamType === 'ALL'
+    ? '4. Detailed Examination History'
+    : `4. Detailed Examination History (${selectedExamType})`;
+  addSectionHeader(examSectionTitle);
 
-  const examRows = (results.rows || []).slice(0, 15).map(r => [
+  const examRows = (targetExamRows || []).slice(0, 15).map(r => [
     r.examDate || '-',
     r.testId || '-',
     r.examType || '-',

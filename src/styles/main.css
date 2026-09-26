@@ -896,6 +896,10 @@ a {
 }
 
 .chip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 7px 16px;
   border-radius: var(--radius-full);
   border: 1px solid var(--stroke);
@@ -912,6 +916,43 @@ a {
   background: var(--tpc-purple-subtle);
   border-color: var(--tpc-purple-border);
   color: var(--tpc-purple);
+}
+
+.chip-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: rgba(107, 33, 168, 0.1);
+  color: var(--tpc-purple);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.chip-btn.active .chip-badge {
+  background: var(--tpc-purple);
+  color: #ffffff;
+}
+
+.exam-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  background: #ffffff;
+  border: 1.5px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+}
+
+.filter-status-indicator {
+  flex-shrink: 0;
 }
 
 .date-range-form {
@@ -1397,6 +1438,19 @@ tr:hover td {
     text-align: center;
     font-size: 11.5px;
     width: 100%;
+  }
+
+  .exam-filter-bar .filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .exam-filter-bar .chip-btn {
+    width: auto;
+    padding: 6px 12px;
+    font-size: 12px;
   }
 
   .date-range-form {
