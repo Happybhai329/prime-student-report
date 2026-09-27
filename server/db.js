@@ -19,16 +19,28 @@ let sqliteDb = null;
  * Gracefully falls back to local SQLite3 if PostgreSQL fails.
  */
 export async function initDatabase() {
-  const databaseUrl = process.env.DATABASE_URL;
+  let databaseUrl = process.env.DATABASE_URL;
 
   if (databaseUrl && databaseUrl.startsWith('postgres')) {
     try {
+      // Supabase pooler optimization: port 5432 is Session mode (max 15 clients).
+      // Port 6543 is Transaction mode (supports hundreds of pooled connections).
+      if (databaseUrl.includes('pooler.supabase.com:5432')) {
+        console.log('Optimizing Supabase connection URL from session mode (5432) to transaction mode (6543)...');
+        databaseUrl = databaseUrl.replace('pooler.supabase.com:5432', 'pooler.supabase.com:6543');
+      }
+
       console.log('Connecting to PostgreSQL / Supabase...');
       const pool = new Pool({
         connectionString: databaseUrl,
         ssl: { rejectUnauthorized: false },
         connectionTimeoutMillis: 10000,
+        idleTimeoutMillis: 30000,
         max: 10
+      });
+
+      pool.on('error', (err) => {
+        console.error('Unexpected idle client error in PostgreSQL pool:', err.message);
       });
 
       // Test connection

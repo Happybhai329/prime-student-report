@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { initDatabase, query, getDbType } from './db.js';
 import { runFullInboundSync, startPeriodicSync, getSyncStatus, submitStudentComplaint } from './syncEngine.js';
 import { generateStudentReportPDF } from './pdfGenerator.js';
+import { fetchRemoteEmployees } from './googleSheets.js';
 
 dotenv.config();
 
@@ -110,46 +111,101 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'EmployeeID is required.' });
     }
 
-    // Check prime_employees first, then fallback to employees if available
+    const cleanEmpId = rawId.trim();
+
+    // 1. Check prime_employees table
     let rows = [];
     try {
       const res = await query(
-        'SELECT employee_id, name, department, role, email, contact, status FROM prime_employees WHERE LOWER(employee_id) = LOWER($1)',
-        [rawId]
+        'SELECT employee_id, name, department, role, email, contact, status FROM prime_employees WHERE LOWER(TRIM(employee_id)) = LOWER(TRIM($1))',
+        [cleanEmpId]
       );
       rows = res.rows;
-    } catch {
-      // ignore
+    } catch (err) {
+      console.warn('[Auth] Error querying prime_employees:', err.message);
     }
 
+    // 2. Fallback to legacy employees table if not found
     if (!rows.length) {
       try {
         const res = await query(
-          'SELECT "employeeId" as employee_id, name, department, role, contact, status FROM employees WHERE LOWER("employeeId") = LOWER($1) OR LOWER(emp_id) = LOWER($1)',
-          [rawId]
+          'SELECT "employeeId" as employee_id, name, department, role, contact, status FROM employees WHERE LOWER(TRIM("employeeId")) = LOWER(TRIM($1)) OR LOWER(TRIM(emp_id)) = LOWER(TRIM($1))',
+          [cleanEmpId]
         );
         rows = res.rows;
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn('[Auth] Error querying employees table:', err.message);
+      }
+    }
+
+    // 3. Real-time Google Sheets fallback:
+    // If not found in local DB (e.g. database pool error, un-synced DB, or newly joined staff),
+    // perform real-time verification directly against Google Sheets so all active employees can log in immediately!
+    if (!rows.length) {
+      try {
+        console.log(`[Auth] EmployeeID "${cleanEmpId}" not found in DB. Performing real-time check against Google Sheets...`);
+        const remoteEmployees = await fetchRemoteEmployees();
+        const found = remoteEmployees.find(e =>
+          normalizeComparable(e.employeeId) === normalizeComparable(cleanEmpId)
+        );
+
+        if (found) {
+          console.log(`[Auth] Employee "${found.employeeId}" (${found.name}) found in Google Sheets. Status: ${found.status}.`);
+
+          // Asynchronously upsert into database for future fast lookups
+          query(`
+            INSERT INTO prime_employees (employee_id, name, department, role, email, contact, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (employee_id) DO UPDATE SET
+              name = EXCLUDED.name,
+              department = EXCLUDED.department,
+              role = EXCLUDED.role,
+              email = EXCLUDED.email,
+              contact = EXCLUDED.contact,
+              status = EXCLUDED.status;
+          `, [found.employeeId, found.name, found.department, found.role, found.email, found.contact, found.status])
+            .catch(e => console.warn('[Auth] Failed to cache employee to DB:', e.message));
+
+          rows = [{
+            employee_id: found.employeeId,
+            name: found.name,
+            department: found.department,
+            role: found.role,
+            email: found.email,
+            contact: found.contact,
+            status: found.status
+          }];
+        }
+      } catch (err) {
+        console.error('[Auth] Real-time Google Sheets check failed:', err.message);
       }
     }
 
     if (!rows.length) {
-      return res.status(404).json({ error: `EmployeeID "${rawId}" not found in faculty records.` });
+      return res.status(404).json({ error: `EmployeeID "${cleanEmpId}" not found in employee records.` });
     }
 
     const emp = rows[0];
-    if (normalizeComparable(emp.status) !== 'active') {
-      return res.status(403).json({ error: 'This employee account is not active. Please contact administrator.' });
+    const statusNorm = normalizeComparable(emp.status);
+
+    // Actively working validation:
+    // Allow ALL employees who are actively working across any department (IT, Sales, Academic, HR, Maintenance, etc.)
+    const isResigned = /(resigned|inactive|left|terminated|suspended|ex-employee)/i.test(statusNorm);
+    const isActive = /(active|working|current|yes|present|joined|probation|permanent)/i.test(statusNorm) || statusNorm === 'active';
+
+    if (isResigned || !isActive) {
+      return res.status(403).json({
+        error: `Employee "${emp.name || cleanEmpId}" is currently marked as ${emp.status || 'inactive'}. Access is only permitted for active employees.`
+      });
     }
 
     return res.json({
       success: true,
       employee: {
         employeeId: emp.employee_id,
-        name: emp.name || 'Faculty Member',
-        department: emp.department || 'Academic',
-        role: emp.role || 'Teacher',
+        name: emp.name || 'Staff Member',
+        department: emp.department || 'General',
+        role: emp.role || 'Employee',
         email: emp.email || '',
         contact: emp.contact || ''
       }

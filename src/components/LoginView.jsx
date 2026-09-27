@@ -137,7 +137,7 @@ export default function LoginView({ onLoginSuccess }) {
             {loading ? (
               <>
                 <div className="spinner" style={{ width: '18px', height: '18px' }} />
-                <span>Verifying Faculty Credentials...</span>
+                <span>Verifying Employee Credentials...</span>
               </>
             ) : (
               <>
@@ -161,7 +161,7 @@ export default function LoginView({ onLoginSuccess }) {
           border: '1px solid var(--stroke)'
         }}>
           <ShieldCheck size={16} color="var(--tpc-green)" />
-          <span>Active Faculty Authorization Required</span>
+          <span>Active Employee Authorization Required</span>
         </div>
       </div>
     </div>
