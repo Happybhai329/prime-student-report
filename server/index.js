@@ -21,11 +21,12 @@ const PORT = process.env.PORT || 10000;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Request logger
+// Request logger (skips repetitive uptime pings)
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
-    if (!req.path.startsWith('/health')) {
+    const isPing = req.path === '/health' || req.path === '/api/health' || req.path === '/ping';
+    if (!isPing) {
       console.log(`${req.method} ${req.path} ${res.statusCode} - ${Date.now() - start}ms`);
     }
   });
@@ -90,13 +91,16 @@ function isPendingHw(val) {
 // --- API Endpoints ---
 
 /**
- * 1. Health Check
+ * 1. Health & Keep-Alive Monitoring Routes (Optimized for UptimeRobot)
+ * Handles GET and HEAD on /health, /api/health, and /ping
  */
-app.get('/health', (req, res) => {
-  res.json({
+app.all(['/health', '/api/health', '/ping'], (req, res) => {
+  res.status(200).json({
     status: 'ok',
-    uptime: process.uptime(),
-    db: getDbType(),
+    service: 'The Prime Classes Portal',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    database: getDbType(),
     sync: getSyncStatus()
   });
 });
@@ -694,7 +698,7 @@ if (fs.existsSync(distPath)) {
   console.log(`Serving static production build from ${distPath}`);
   app.use(express.static(distPath));
   app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api') && !req.path.startsWith('/health')) {
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/health') && !req.path.startsWith('/ping')) {
       res.sendFile(path.join(distPath, 'index.html'));
     }
   });

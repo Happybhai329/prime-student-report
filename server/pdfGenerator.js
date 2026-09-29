@@ -112,9 +112,8 @@ export function generateStudentReportPDF(reportBundle, teacher = {}, options = {
   doc.setFontSize(8.5);
   doc.setTextColor(100, 116, 139);
   const genDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  const facultyName = teacher.name ? `${teacher.name} (${teacher.employeeId || 'Faculty'})` : 'Academic Evaluation Cell';
   doc.text(
-    `Issued Date: ${genDate}    |    Issued By: ${facultyName}    |    Report Period: ${filterLabel}`,
+    `Issued Date: ${genDate}    |    Institution: The Prime Classes    |    Report Period: ${filterLabel}`,
     pageWidth / 2,
     currentY + 14,
     { align: 'center' }
@@ -418,9 +417,49 @@ export function generateStudentReportPDF(reportBundle, teacher = {}, options = {
     }
   });
 
-  currentY = doc.lastAutoTable.finalY + 24;
+  currentY = doc.lastAutoTable.finalY + 18;
 
+  // --- Section 6: Wholesome Institutional Message from The Prime Classes ---
+  const msgBoxHeight = 84;
+  if (currentY > pageHeight - msgBoxHeight - 35) {
+    doc.addPage();
+    currentY = margin + 12;
+  }
 
+  const boxWidth = pageWidth - margin * 2;
+  doc.setFillColor(250, 245, 255); // #faf5ff soft lavender
+  doc.setDrawColor(216, 180, 254); // #d8b4fe
+  doc.setLineWidth(0.75);
+  doc.roundedRect(margin, currentY, boxWidth, msgBoxHeight, 3, 3, 'FD');
+
+  // Accent left vertical bar
+  doc.setFillColor(107, 33, 168);
+  doc.roundedRect(margin, currentY, 4, msgBoxHeight, 2, 2, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(107, 33, 168);
+  doc.text('A MESSAGE FROM THE PRIME CLASSES', margin + 14, currentY + 14);
+
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7.4);
+  doc.setTextColor(51, 65, 85);
+  const primePdfMsg =
+    "At The Prime Classes, we believe that education extends far beyond test scores and rankings—it is about cultivating character, resilience, curiosity, and disciplined dedication. Every test score and observation in this report reflects a step forward on your child's journey toward excellence. With consistent effort, structured mentorship, and our shared encouragement, every challenge becomes a stepping stone to greatness. We are honored to walk alongside your child, guiding and inspiring them to reach their highest potential in academics and life.";
+
+  const splitMsgLines = doc.splitTextToSize(primePdfMsg, boxWidth - 26);
+  doc.text(splitMsgLines, margin + 14, currentY + 24);
+
+  const signY = currentY + 24 + (splitMsgLines.length * 8.5) + 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(30, 41, 59);
+  doc.text('— Team The Prime Classes', margin + 14, signY);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.8);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Mentoring Champions for RIMC • RMS • Sainik School • Foundation', margin + 14, signY + 8.5);
 
   // Footer on all pages
   const totalPages = doc.internal.getNumberOfPages();
