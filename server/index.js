@@ -25,7 +25,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
-    const isPing = req.path === '/health' || req.path === '/api/health' || req.path === '/ping';
+    const isPing = /^\/(health|ping|uptime|api\/(health|ping|uptime))/i.test(req.path);
     if (!isPing) {
       console.log(`${req.method} ${req.path} ${res.statusCode} - ${Date.now() - start}ms`);
     }
@@ -94,7 +94,7 @@ function isPendingHw(val) {
  * 1. Health & Keep-Alive Monitoring Routes (Optimized for UptimeRobot)
  * Handles GET and HEAD on /health, /api/health, and /ping
  */
-app.all(['/health', '/api/health', '/ping'], (req, res) => {
+app.all(['/health', '/api/health', '/ping', '/api/ping', '/uptime', '/api/uptime'], (req, res) => {
   res.status(200).json({
     status: 'ok',
     service: 'The Prime Classes Portal',
@@ -698,7 +698,7 @@ if (fs.existsSync(distPath)) {
   console.log(`Serving static production build from ${distPath}`);
   app.use(express.static(distPath));
   app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api') && !req.path.startsWith('/health') && !req.path.startsWith('/ping')) {
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/health') && !req.path.startsWith('/ping') && !req.path.startsWith('/uptime')) {
       res.sendFile(path.join(distPath, 'index.html'));
     }
   });
