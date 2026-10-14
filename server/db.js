@@ -35,8 +35,8 @@ export async function initDatabase() {
         connectionString: databaseUrl,
         ssl: { rejectUnauthorized: false },
         connectionTimeoutMillis: 10000,
-        idleTimeoutMillis: 30000,
-        max: 10
+        idleTimeoutMillis: 5000,
+        max: 5
       });
 
       pool.on('error', (err) => {
@@ -206,6 +206,7 @@ async function createTables() {
       student_name TEXT,
       father_name TEXT,
       batch TEXT,
+      batch_id TEXT,
       class_name TEXT,
       school TEXT,
       mobile TEXT,
@@ -220,6 +221,7 @@ async function createTables() {
   await query(`
     CREATE TABLE IF NOT EXISTS batches (
       batch_name TEXT PRIMARY KEY,
+      batch_id TEXT,
       classroom TEXT,
       writing_class TEXT,
       actual_class TEXT,
@@ -235,14 +237,32 @@ async function createTables() {
       student_id TEXT,
       date TEXT,
       batch TEXT,
+      batch_id TEXT,
       presence_type TEXT,
       teacher_id TEXT,
+      evaluator_id TEXT,
       teacher_name TEXT,
       call_reason TEXT
     );
   `);
 
-  // 5. Homework table
+  // 5. Attendance Records table (standardized reporting)
+  await query(`
+    CREATE TABLE IF NOT EXISTS attendance_records (
+      id ${idColDef},
+      student_id TEXT,
+      date TEXT,
+      batch TEXT,
+      batch_id TEXT,
+      presence_type TEXT,
+      teacher_id TEXT,
+      evaluator_id TEXT,
+      teacher_name TEXT,
+      call_reason TEXT
+    );
+  `);
+
+  // 6. Homework table
   await query(`
     CREATE TABLE IF NOT EXISTS homework (
       id ${idColDef},
@@ -253,19 +273,21 @@ async function createTables() {
       final_status TEXT,
       duration_min REAL DEFAULT 0,
       teacher_id TEXT,
+      evaluator_id TEXT,
       teacher_name TEXT,
       start_time TEXT,
       end_time TEXT
     );
   `);
 
-  // 6. Exam Results table
+  // 7. Exam Results table
   await query(`
     CREATE TABLE IF NOT EXISTS exam_results (
       id ${idColDef},
       test_id TEXT,
       exam_date TEXT,
       batch_name TEXT,
+      batch_id TEXT,
       exam_type TEXT,
       student_id TEXT,
       student_name TEXT,
@@ -274,19 +296,66 @@ async function createTables() {
       exam_total_max_marks REAL,
       subject_name TEXT,
       subject_obtained_marks REAL,
-      subject_max_marks REAL
+      subject_max_marks REAL,
+      teacher_id TEXT,
+      evaluator_id TEXT
     );
   `);
 
-  // 7. Complaints table
+  // 8. Test Results table (standardized reporting)
+  await query(`
+    CREATE TABLE IF NOT EXISTS test_results (
+      id ${idColDef},
+      test_id TEXT,
+      exam_date TEXT,
+      batch_name TEXT,
+      batch_id TEXT,
+      exam_type TEXT,
+      student_id TEXT,
+      student_name TEXT,
+      rank REAL,
+      total_obtained_marks REAL,
+      exam_total_max_marks REAL,
+      subject_name TEXT,
+      subject_obtained_marks REAL,
+      subject_max_marks REAL,
+      teacher_id TEXT,
+      evaluator_id TEXT
+    );
+  `);
+
+  // 9. Report Cards table (pre-calculated or institutional cards)
+  const jsonColDef = dbType === 'postgres' ? 'JSONB' : 'TEXT';
+  await query(`
+    CREATE TABLE IF NOT EXISTS report_cards (
+      id ${idColDef},
+      student_id TEXT,
+      batch_id TEXT,
+      batch_name TEXT,
+      exam_type TEXT,
+      total_exams INTEGER,
+      average_percentage REAL,
+      average_marks REAL,
+      highest_score REAL,
+      lowest_score REAL,
+      teacher_id TEXT,
+      evaluator_id TEXT,
+      generated_at ${tsColDef},
+      data ${jsonColDef}
+    );
+  `);
+
+  // 10. Complaints table
   await query(`
     CREATE TABLE IF NOT EXISTS complaints (
       complaint_id TEXT PRIMARY KEY,
       student_id TEXT,
       student_name TEXT,
       batch TEXT,
+      batch_id TEXT,
       teacher_name TEXT,
       teacher_employee_id TEXT,
+      evaluator_id TEXT,
       department TEXT,
       complaint_text TEXT,
       status TEXT,
@@ -296,7 +365,7 @@ async function createTables() {
     );
   `);
 
-  // 8. Sync Meta table
+  // 11. Sync Meta table
   await query(`
     CREATE TABLE IF NOT EXISTS sync_meta (
       key TEXT PRIMARY KEY,
@@ -305,14 +374,58 @@ async function createTables() {
     );
   `);
 
-  // Indexes for sub-50ms performance
-  await query(`CREATE INDEX IF NOT EXISTS idx_prime_employees_id ON prime_employees(employee_id);`);
+  // Indexes on students
+  await query(`CREATE INDEX IF NOT EXISTS idx_students_id ON students(student_id);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_students_name ON students(student_name);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_students_batch ON students(batch);`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance(student_id, date);`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_homework_student_date ON homework(student_id, date);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_students_batch_id ON students(batch_id);`);
+
+  // Indexes on batches
+  await query(`CREATE INDEX IF NOT EXISTS idx_batches_name ON batches(batch_name);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_batches_id ON batches(batch_id);`);
+
+  // Indexes on exam_results
+  await query(`CREATE INDEX IF NOT EXISTS idx_exam_results_student_id ON exam_results(student_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_exam_results_batch_id ON exam_results(batch_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_exam_results_batch_name ON exam_results(batch_name);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_exam_results_exam_date ON exam_results(exam_date);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_exam_results_student_test ON exam_results(student_id, test_id);`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_complaints_student ON complaints(student_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_exam_results_student_date ON exam_results(student_id, exam_date);`);
+
+  // Indexes on test_results
+  await query(`CREATE INDEX IF NOT EXISTS idx_test_results_student_id ON test_results(student_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_test_results_batch_id ON test_results(batch_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_test_results_batch_name ON test_results(batch_name);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_test_results_exam_date ON test_results(exam_date);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_test_results_student_test ON test_results(student_id, test_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_test_results_student_date ON test_results(student_id, exam_date);`);
+
+  // Indexes on attendance
+  await query(`CREATE INDEX IF NOT EXISTS idx_attendance_student_id ON attendance(student_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_attendance_batch_id ON attendance(batch_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_attendance_batch ON attendance(batch);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance(student_id, date);`);
+
+  // Indexes on attendance_records
+  await query(`CREATE INDEX IF NOT EXISTS idx_attendance_records_student_id ON attendance_records(student_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_attendance_records_batch_id ON attendance_records(batch_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_attendance_records_date ON attendance_records(date);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_attendance_records_student_date ON attendance_records(student_id, date);`);
+
+  // Indexes on report_cards
+  await query(`CREATE INDEX IF NOT EXISTS idx_report_cards_student_id ON report_cards(student_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_report_cards_batch_id ON report_cards(batch_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_report_cards_exam_type ON report_cards(exam_type);`);
+
+  // Indexes on homework
+  await query(`CREATE INDEX IF NOT EXISTS idx_homework_student_id ON homework(student_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_homework_student_date ON homework(student_id, date);`);
+
+  // Indexes on complaints
+  await query(`CREATE INDEX IF NOT EXISTS idx_complaints_student_id ON complaints(student_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_complaints_batch_id ON complaints(batch_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_prime_employees_id ON prime_employees(employee_id);`);
 
   console.log('Database schema ready.');
 }

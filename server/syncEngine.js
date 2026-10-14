@@ -86,14 +86,15 @@ export async function runFullInboundSync() {
     console.log(`[SyncEngine] Ingesting ${students.length} students...`);
     await batchUpsert(
       'students',
-      ['student_id', 'student_name', 'father_name', 'batch', 'class_name', 'school', 'mobile', 'email', 'program', 'dob'],
+      ['student_id', 'student_name', 'father_name', 'batch', 'batch_id', 'class_name', 'school', 'mobile', 'email', 'program', 'dob'],
       'student_id',
-      ['student_name', 'father_name', 'batch', 'class_name', 'school', 'mobile', 'email', 'program', 'dob'],
+      ['student_name', 'father_name', 'batch', 'batch_id', 'class_name', 'school', 'mobile', 'email', 'program', 'dob'],
       students.map(s => ({
         student_id: s.studentId,
         student_name: s.studentName,
         father_name: s.fatherName,
         batch: s.batch,
+        batch_id: s.batch,
         class_name: s.className,
         school: s.school,
         mobile: s.mobile,
@@ -108,11 +109,12 @@ export async function runFullInboundSync() {
     console.log(`[SyncEngine] Ingesting ${batches.length} batches...`);
     await batchUpsert(
       'batches',
-      ['batch_name', 'classroom', 'writing_class', 'actual_class', 'subjects_offered'],
+      ['batch_name', 'batch_id', 'classroom', 'writing_class', 'actual_class', 'subjects_offered'],
       'batch_name',
-      ['classroom', 'writing_class', 'actual_class', 'subjects_offered'],
+      ['batch_id', 'classroom', 'writing_class', 'actual_class', 'subjects_offered'],
       batches.map(b => ({
         batch_name: b.batchName,
+        batch_id: b.batchName,
         classroom: b.classRoom,
         writing_class: b.writingClass,
         actual_class: b.actualClass,
@@ -121,22 +123,32 @@ export async function runFullInboundSync() {
       100
     );
 
-    // 5. Fast Batch Insert Attendance
+    // 5. Fast Batch Insert Attendance & Attendance Records
     if (attendance.length > 0) {
       console.log(`[SyncEngine] Ingesting ${attendance.length} attendance records...`);
       await query('DELETE FROM attendance');
+      await query('DELETE FROM attendance_records');
+      const attendanceData = attendance.map(a => ({
+        student_id: a.studentId,
+        date: a.date,
+        batch: a.batch,
+        batch_id: a.batch,
+        presence_type: a.presenceType,
+        teacher_id: a.teacherId,
+        evaluator_id: a.teacherId,
+        teacher_name: a.teacherName,
+        call_reason: a.callReason
+      }));
       await batchInsert(
         'attendance',
-        ['student_id', 'date', 'batch', 'presence_type', 'teacher_id', 'teacher_name', 'call_reason'],
-        attendance.map(a => ({
-          student_id: a.studentId,
-          date: a.date,
-          batch: a.batch,
-          presence_type: a.presenceType,
-          teacher_id: a.teacherId,
-          teacher_name: a.teacherName,
-          call_reason: a.callReason
-        })),
+        ['student_id', 'date', 'batch', 'batch_id', 'presence_type', 'teacher_id', 'evaluator_id', 'teacher_name', 'call_reason'],
+        attendanceData,
+        1000
+      );
+      await batchInsert(
+        'attendance_records',
+        ['student_id', 'date', 'batch', 'batch_id', 'presence_type', 'teacher_id', 'evaluator_id', 'teacher_name', 'call_reason'],
+        attendanceData,
         1000
       );
     }
@@ -147,7 +159,7 @@ export async function runFullInboundSync() {
       await query('DELETE FROM homework');
       await batchInsert(
         'homework',
-        ['student_id', 'date', 'subject', 'status', 'final_status', 'duration_min', 'teacher_id', 'teacher_name', 'start_time', 'end_time'],
+        ['student_id', 'date', 'subject', 'status', 'final_status', 'duration_min', 'teacher_id', 'evaluator_id', 'teacher_name', 'start_time', 'end_time'],
         homework.map(h => ({
           student_id: h.studentId,
           date: h.date,
@@ -156,6 +168,7 @@ export async function runFullInboundSync() {
           final_status: h.finalStatus,
           duration_min: h.durationMin,
           teacher_id: h.teacherId,
+          evaluator_id: h.teacherId,
           teacher_name: h.teacherName,
           start_time: h.startTime,
           end_time: h.endTime
@@ -164,27 +177,36 @@ export async function runFullInboundSync() {
       );
     }
 
-    // 7. Fast Batch Insert Exam Results
+    // 7. Fast Batch Insert Exam Results & Test Results
     if (examResults.length > 0) {
       console.log(`[SyncEngine] Ingesting ${examResults.length} exam result records...`);
       await query('DELETE FROM exam_results');
+      await query('DELETE FROM test_results');
+      const examData = examResults.map(r => ({
+        test_id: r.testId,
+        exam_date: r.examDate,
+        batch_name: r.batchName,
+        batch_id: r.batchName,
+        exam_type: r.examType,
+        student_id: r.studentId,
+        student_name: r.studentName,
+        rank: r.rank,
+        total_obtained_marks: r.totalObtainedMarks,
+        exam_total_max_marks: r.examTotalMaxMarks,
+        subject_name: r.subjectName,
+        subject_obtained_marks: r.subjectObtainedMarks,
+        subject_max_marks: r.subjectMaxMarks
+      }));
       await batchInsert(
         'exam_results',
-        ['test_id', 'exam_date', 'batch_name', 'exam_type', 'student_id', 'student_name', 'rank', 'total_obtained_marks', 'exam_total_max_marks', 'subject_name', 'subject_obtained_marks', 'subject_max_marks'],
-        examResults.map(r => ({
-          test_id: r.testId,
-          exam_date: r.examDate,
-          batch_name: r.batchName,
-          exam_type: r.examType,
-          student_id: r.studentId,
-          student_name: r.studentName,
-          rank: r.rank,
-          total_obtained_marks: r.totalObtainedMarks,
-          exam_total_max_marks: r.examTotalMaxMarks,
-          subject_name: r.subjectName,
-          subject_obtained_marks: r.subjectObtainedMarks,
-          subject_max_marks: r.subjectMaxMarks
-        })),
+        ['test_id', 'exam_date', 'batch_name', 'batch_id', 'exam_type', 'student_id', 'student_name', 'rank', 'total_obtained_marks', 'exam_total_max_marks', 'subject_name', 'subject_obtained_marks', 'subject_max_marks'],
+        examData,
+        1000
+      );
+      await batchInsert(
+        'test_results',
+        ['test_id', 'exam_date', 'batch_name', 'batch_id', 'exam_type', 'student_id', 'student_name', 'rank', 'total_obtained_marks', 'exam_total_max_marks', 'subject_name', 'subject_obtained_marks', 'subject_max_marks'],
+        examData,
         1000
       );
     }
@@ -194,7 +216,7 @@ export async function runFullInboundSync() {
       console.log(`[SyncEngine] Ingesting ${complaints.length} complaints...`);
       await batchUpsert(
         'complaints',
-        ['complaint_id', 'student_id', 'student_name', 'batch', 'teacher_name', 'teacher_employee_id', 'department', 'complaint_text', 'status', 'pdf_link', 'date', 'submitted_at'],
+        ['complaint_id', 'student_id', 'student_name', 'batch', 'batch_id', 'teacher_name', 'teacher_employee_id', 'evaluator_id', 'department', 'complaint_text', 'status', 'pdf_link', 'date', 'submitted_at'],
         'complaint_id',
         ['status', 'pdf_link', 'complaint_text'],
         complaints.map(c => ({
@@ -202,8 +224,10 @@ export async function runFullInboundSync() {
           student_id: c.studentId,
           student_name: c.studentName,
           batch: c.batch,
+          batch_id: c.batch,
           teacher_name: c.teacherName,
           teacher_employee_id: c.teacherEmployeeId,
+          evaluator_id: c.teacherEmployeeId,
           department: c.department,
           complaint_text: c.complaintText,
           status: c.status,

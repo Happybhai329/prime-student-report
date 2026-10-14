@@ -279,9 +279,9 @@ app.get('/api/students/:id/report', async (req, res) => {
     const startKey = startDate ? parseDateKey(startDate) : 0;
     const endKey = endDate ? parseDateKey(endDate) : 0;
 
-    // 1. Fetch Student Profile
+    // 1. Fetch Student Profile (low-egress column projection)
     const studentRes = await query(
-      'SELECT * FROM students WHERE LOWER(student_id) = LOWER($1)',
+      'SELECT student_id, student_name, father_name, batch, class_name, school, mobile, email, program, dob FROM students WHERE LOWER(student_id) = LOWER($1)',
       [studentId]
     );
 
@@ -291,11 +291,11 @@ app.get('/api/students/:id/report', async (req, res) => {
 
     const studentRecord = studentRes.rows[0];
 
-    // 2. Fetch Batch Context
+    // 2. Fetch Batch Context (specific columns)
     let batchContext = null;
     if (studentRecord.batch) {
       const batchRes = await query(
-        'SELECT * FROM batches WHERE LOWER(batch_name) = LOWER($1)',
+        'SELECT batch_name, classroom, writing_class, actual_class, subjects_offered FROM batches WHERE LOWER(batch_name) = LOWER($1)',
         [studentRecord.batch]
       );
       if (batchRes.rows.length) {
@@ -413,11 +413,14 @@ app.get('/api/students/:id/report', async (req, res) => {
       }))
     };
 
-    // 5. Exam Results
-    const examRes = await query(
-      'SELECT test_id, exam_date, batch_name, exam_type, student_id, rank, total_obtained_marks, exam_total_max_marks, subject_name, subject_obtained_marks, subject_max_marks FROM exam_results WHERE LOWER(student_id) = LOWER($1)',
-      [studentId]
-    );
+    // 5. Exam Results (Low-egress indexed query filtering by student and optional batch)
+    let examSql = 'SELECT test_id, exam_date, batch_name, exam_type, student_id, rank, total_obtained_marks, exam_total_max_marks, subject_name, subject_obtained_marks, subject_max_marks FROM exam_results WHERE LOWER(student_id) = LOWER($1)';
+    const examParams = [studentId];
+    if (req.query.batch) {
+      examSql += ' AND (LOWER(batch_name) = LOWER($2) OR LOWER(batch_id) = LOWER($2))';
+      examParams.push(cleanText(req.query.batch));
+    }
+    const examRes = await query(examSql, examParams);
 
     const filteredExams = examRes.rows.filter(r => isDateInRange(r.exam_date, startKey, endKey));
 
@@ -657,7 +660,7 @@ app.post('/api/students/:id/pdf', async (req, res) => {
       const mockReq = { params: { id: studentId }, query: {} };
       let fetchedData = null;
       // We can directly call the report logic:
-      const studentRes = await query('SELECT * FROM students WHERE LOWER(student_id) = LOWER($1)', [studentId]);
+      const studentRes = await query('SELECT student_id, student_name, father_name, batch, class_name, school, mobile, email, program, dob FROM students WHERE LOWER(student_id) = LOWER($1)', [studentId]);
       if (!studentRes.rows.length) {
         return res.status(404).json({ error: 'Student not found.' });
       }
