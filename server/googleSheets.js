@@ -29,9 +29,16 @@ function getAuthClient() {
     throw new Error('Missing Google Service Account credentials in environment variables.');
   }
 
-  // Handle escaped \n characters in private key
-  if (privateKey.includes('\\n')) {
-    privateKey = privateKey.replace(/\\n/g, '\n');
+  // Clean and robustly sanitize private key (handle surrounding quotes, escaped quotes, and newlines)
+  if (typeof privateKey === 'string') {
+    privateKey = privateKey.trim();
+    if ((privateKey.startsWith('"') && privateKey.endsWith('"')) || (privateKey.startsWith("'") && privateKey.endsWith("'"))) {
+      privateKey = privateKey.slice(1, -1);
+    }
+    privateKey = privateKey.replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
+    if ((privateKey.startsWith('"') && privateKey.endsWith('"')) || (privateKey.startsWith("'") && privateKey.endsWith("'"))) {
+      privateKey = privateKey.slice(1, -1).trim();
+    }
   }
 
   const auth = new google.auth.JWT({
