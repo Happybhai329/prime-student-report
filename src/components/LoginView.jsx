@@ -23,7 +23,15 @@ export default function LoginView({ onLoginSuccess }) {
         body: JSON.stringify({ employeeId: employeeId.trim() })
       });
 
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        if (!res.ok) {
+          throw new Error('Server is currently warming up or busy. Please retry in a few seconds.');
+        }
+      }
+
       if (!res.ok) {
         throw new Error(data.error || 'Authentication failed.');
       }
