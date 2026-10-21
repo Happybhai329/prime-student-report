@@ -718,14 +718,22 @@ async function startServer() {
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     });
 
-    // Start background sync automatically
-    startPeriodicSync(15);
+    // Periodic background sync (disabled by default to preserve free bandwidth)
+    const syncInterval = parseInt(process.env.SYNC_INTERVAL_MINUTES || '0', 10);
+    if (syncInterval > 0) {
+      console.log(`[SyncEngine] Periodic sync registered every ${syncInterval} minutes.`);
+      startPeriodicSync(syncInterval);
+    } else {
+      console.log('[SyncEngine] Automatic periodic sync disabled to conserve bandwidth. Data is served directly from Supabase. Use POST /api/sync/trigger for on-demand sync.');
+    }
 
-    // Run initial sync asynchronously (non-blocking)
-    setTimeout(() => {
-      console.log('Initiating initial Google Sheets inbound sync in background...');
-      runFullInboundSync().catch(err => console.error('Initial sync notice:', err.message));
-    }, 1000);
+    // Run initial sync only if explicitly requested
+    if (process.env.SYNC_ON_STARTUP === 'true') {
+      setTimeout(() => {
+        console.log('Initiating initial Google Sheets inbound sync in background...');
+        runFullInboundSync().catch(err => console.error('Initial sync notice:', err.message));
+      }, 1000);
+    }
   } catch (err) {
     console.error('Failed to start server:', err);
     process.exit(1);
