@@ -20,12 +20,13 @@ import {
   Flame,
   Star,
   Sparkles,
-  ArrowUpRight
+  ArrowUpRight,
+  AlertTriangle
 } from 'lucide-react';
 import CalculationPreviewModal from './CalculationPreviewModal';
 
 export default function LeaderboardView({ onSelectStudent, onShowToast }) {
-  const [activeTab, setActiveTab] = useState('students'); // 'students' | 'batches' | 'subjects' | 'teachers'
+  const [activeTab, setActiveTab] = useState('students'); // 'students' | 'batches' | 'subjects'
   const [loading, setLoading] = useState(true);
   const [leaderboardData, setLeaderboardData] = useState(null);
   const [filtersMeta, setFiltersMeta] = useState({ batches: [], subjects: [], examTypes: [] });
@@ -123,7 +124,6 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
   const studentsList = leaderboardData?.students || [];
   const batchList = leaderboardData?.batchRankings || [];
   const subjectList = leaderboardData?.subjectPerformance || [];
-  const teacherList = leaderboardData?.teacherPerformance || [];
   const highlights = leaderboardData?.highlights || {};
 
   // Top 3 Podium
@@ -494,29 +494,6 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           >
             <BookOpen size={16} />
             <span>Subject Analysis ({subjectList.length})</span>
-          </button>
-
-          <button
-            type="button"
-            className={`tab-btn ${activeTab === 'teachers' ? 'active' : ''}`}
-            onClick={() => setActiveTab('teachers')}
-            style={{
-              padding: '10px 18px',
-              borderRadius: '12px',
-              fontSize: '13px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              border: activeTab === 'teachers' ? '1.5px solid var(--tpc-purple)' : '1px solid var(--stroke)',
-              background: activeTab === 'teachers' ? 'var(--tpc-purple)' : 'white',
-              color: activeTab === 'teachers' ? 'white' : 'var(--text-muted)',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <UserCheck size={16} />
-            <span>Faculty & Teachers ({teacherList.length})</span>
           </button>
         </div>
 
@@ -990,133 +967,73 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
             </div>
           )}
 
-          {/* TAB 3: SUBJECT PERFORMANCE */}
+          {/* TAB 3: SUBJECT PERFORMANCE & ANALYSIS */}
           {activeTab === 'subjects' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '16px' }}>
-              {subjectList.map((subj) => (
-                <div
-                  key={subj.subject}
-                  className="glass"
-                  style={{ borderRadius: '18px', padding: '22px', border: '1px solid var(--stroke)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
-                >
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                      <span className="badge badge-purple" style={{ fontSize: '11px', fontWeight: 800 }}>
-                        {subj.batchCount} Batches Evaluated
-                      </span>
-                      <span style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tpc-purple)' }}>
-                        {subj.overallAvg}%
-                      </span>
-                    </div>
-
-                    <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 14px' }}>
-                      {subj.subject}
-                    </h3>
-
-                    {/* Strong Batches */}
-                    <div style={{ marginBottom: '12px' }}>
-                      <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--success)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <CheckCircle2 size={13} />
-                        Top Performing Batches:
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {(subj.strongBatches || []).map((sb, i) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '4px 8px', background: 'var(--success-bg)', borderRadius: '6px' }}>
-                            <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{sb.batch}</span>
-                            <span style={{ fontWeight: 800, color: 'var(--success)' }}>{sb.avgPct}%</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Focus Batches */}
-                    <div>
-                      <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--danger)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <AlertTriangle size={13} />
-                        Batches Needing Focus:
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {(subj.weakBatches || []).map((wb, i) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '4px 8px', background: 'var(--danger-bg)', borderRadius: '6px' }}>
-                            <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{wb.batch}</span>
-                            <span style={{ fontWeight: 800, color: 'var(--danger)' }}>{wb.avgPct}%</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+            <div>
+              {subjectList.length === 0 ? (
+                <div className="glass" style={{ textAlign: 'center', padding: '60px 20px', borderRadius: '20px' }}>
+                  <BookOpen size={36} color="var(--text-light)" style={{ margin: '0 auto 12px' }} />
+                  <h4 style={{ fontSize: '16px', fontWeight: 700 }}>No subject performance data found</h4>
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Try selecting "All Batches" or clearing your timeline filters.</p>
                 </div>
-              ))}
-            </div>
-          )}
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '16px' }}>
+                  {subjectList.map((subj) => (
+                    <div
+                      key={subj.subject}
+                      className="glass"
+                      style={{ borderRadius: '18px', padding: '22px', border: '1px solid var(--stroke)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <span className="badge badge-purple" style={{ fontSize: '11px', fontWeight: 800 }}>
+                            {subj.batchCount} Batches Evaluated
+                          </span>
+                          <span style={{ fontSize: '20px', fontWeight: 900, color: 'var(--tpc-purple)' }}>
+                            {subj.overallAvg}%
+                          </span>
+                        </div>
 
-          {/* TAB 4: TEACHER & FACULTY PERFORMANCE */}
-          {activeTab === 'teachers' && (
-            <div className="glass" style={{ borderRadius: '20px', overflow: 'hidden' }}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--stroke)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
-                    Faculty & Evaluator Performance Insights
-                  </h3>
-                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                    Evaluation analytics linked to registered teachers and academic staff.
-                  </p>
+                        <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 14px' }}>
+                          {subj.subject}
+                        </h3>
+
+                        {/* Strong Batches */}
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--success)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCircle2 size={13} />
+                            Top Performing Batches:
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {(subj.strongBatches || []).map((sb, i) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '4px 8px', background: 'var(--success-bg)', borderRadius: '6px' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{sb.batch}</span>
+                                <span style={{ fontWeight: 800, color: 'var(--success)' }}>{sb.avgPct}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Focus Batches */}
+                        <div>
+                          <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--danger)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <AlertTriangle size={13} />
+                            Batches Needing Focus:
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {(subj.weakBatches || []).map((wb, i) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '4px 8px', background: 'var(--danger-bg)', borderRadius: '6px' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{wb.batch}</span>
+                                <span style={{ fontWeight: 800, color: 'var(--danger)' }}>{wb.avgPct}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <span className="badge badge-surface" style={{ fontSize: '12px', fontWeight: 700 }}>
-                  {teacherList.length} Faculty Members
-                </span>
-              </div>
-
-              <div className="table-responsive-touch">
-                <table className="results-table" style={{ fontSize: '13px', width: '100%' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '60px', textAlign: 'center' }}>Rank</th>
-                      <th>Faculty Member</th>
-                      <th>Employee ID</th>
-                      <th style={{ textAlign: 'center' }}>Batches Handled</th>
-                      <th style={{ textAlign: 'center' }}>Subjects</th>
-                      <th style={{ textAlign: 'center' }}>Evaluations</th>
-                      <th style={{ textAlign: 'right' }}>Average Student Score</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {teacherList.map((t) => (
-                      <tr key={t.teacherId || t.teacherName}>
-                        <td style={{ textAlign: 'center', fontWeight: 800 }}>#{t.rank}</td>
-                        <td style={{ fontWeight: 800, color: 'var(--text-main)' }}>
-                          {t.teacherName}
-                        </td>
-                        <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>
-                          {t.teacherId}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <span className="badge badge-surface" style={{ fontSize: '11px' }}>
-                            {t.batchesCount} batches
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <span className="badge badge-surface" style={{ fontSize: '11px' }}>
-                            {t.subjectsCount} subjects
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'center', fontWeight: 700 }}>
-                          {t.totalEvaluations}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <span style={{
-                            fontSize: '15px',
-                            fontWeight: 900,
-                            color: t.avgPct >= 75 ? 'var(--success)' : t.avgPct >= 60 ? 'var(--tpc-purple)' : 'var(--danger)'
-                          }}>
-                            {t.avgPct}%
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              )}
             </div>
           )}
         </>

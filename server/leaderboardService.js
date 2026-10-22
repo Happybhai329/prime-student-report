@@ -409,36 +409,7 @@ export async function getLeaderboardData({
   });
   subjectPerformance.sort((a, b) => b.overallAvg - a.overallAvg);
 
-  // --- Step 8: Teacher / Evaluator Performance ---
-  const teacherSql = `
-    SELECT 
-      COALESCE(pe.name, er.teacher_id, 'Unassigned Faculty') as teacher_name,
-      er.teacher_id,
-      ROUND(AVG((er.subject_obtained_marks / NULLIF(er.subject_max_marks, 0)) * 100)::numeric, 1) as avg_pct,
-      COUNT(DISTINCT er.batch_name) as batches_count,
-      COUNT(DISTINCT er.subject_name) as subjects_count,
-      COUNT(*) as total_evaluations
-    FROM exam_results er
-    LEFT JOIN prime_employees pe ON LOWER(TRIM(pe.employee_id)) = LOWER(TRIM(er.teacher_id))
-    WHERE er.subject_max_marks > 0 AND er.subject_obtained_marks IS NOT NULL
-      AND er.teacher_id IS NOT NULL AND TRIM(er.teacher_id) != ''
-    GROUP BY pe.name, er.teacher_id
-    HAVING COUNT(*) >= 5
-    ORDER BY avg_pct DESC
-    LIMIT 15;
-  `;
-  const teacherRes = await query(teacherSql);
-  const teacherPerformance = teacherRes.rows.map((r, i) => ({
-    rank: i + 1,
-    teacherName: r.teacher_name,
-    teacherId: r.teacher_id,
-    avgPct: Number(r.avg_pct) || 0,
-    batchesCount: Number(r.batches_count) || 0,
-    subjectsCount: Number(r.subjects_count) || 0,
-    totalEvaluations: Number(r.total_evaluations) || 0
-  }));
-
-  // --- Step 9: Top Highlights ---
+  // --- Step 8: Top Highlights ---
   const topPerformer = rankedStudents.length > 0 ? {
     id: rankedStudents[0].studentId,
     name: rankedStudents[0].studentName,
@@ -467,7 +438,6 @@ export async function getLeaderboardData({
     students: rankedStudents,
     batchRankings,
     subjectPerformance,
-    teacherPerformance,
     highlights: {
       topPerformer,
       bestAttendance,
