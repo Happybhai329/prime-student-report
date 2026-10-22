@@ -14,7 +14,8 @@ import {
   ShieldAlert,
   Sparkles,
   Quote,
-  Calculator
+  Calculator,
+  Trophy
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTablePlugin from 'jspdf-autotable';
@@ -61,7 +62,8 @@ export default function ReportView({
   teacher,
   onDateFilterChange,
   onShowToast,
-  onRefreshReport
+  onRefreshReport,
+  leaderboardContext = null
 }) {
   const [activeRange, setActiveRange] = useState('all'); // 'all' | '30d' | '90d' | 'custom'
   const [customStart, setCustomStart] = useState('');
@@ -516,14 +518,57 @@ export default function ReportView({
       });
       currentY = doc.lastAutoTable.finalY + 18;
 
-      // --- 6. Wholesome Institutional Message from The Prime Classes ---
+      const boxWidth = pageWidth - margin * 2;
       const msgBoxHeight = 84;
+
+      // --- 5B. Official Institutional Leaderboard Standing Banner (if generated from Leaderboard) ---
+      if (leaderboardContext) {
+        const lbStandingHeight = 44;
+        if (currentY > pageHeight - lbStandingHeight - msgBoxHeight - 35) {
+          doc.addPage();
+          currentY = margin + 12;
+        }
+
+        doc.setFillColor(255, 251, 235); // #fffbeb warm gold
+        doc.setDrawColor(245, 158, 11);  // #f59e0b amber
+        doc.setLineWidth(1);
+        doc.roundedRect(margin, currentY, boxWidth, lbStandingHeight, 3, 3, 'FD');
+
+        // Gold vertical accent bar on left
+        doc.setFillColor(245, 158, 11);
+        doc.roundedRect(margin, currentY, 4, lbStandingHeight, 2, 2, 'F');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(180, 83, 9); // #b45309 dark amber
+        doc.text('OFFICIAL INSTITUTIONAL LEADERBOARD STANDING', margin + 14, currentY + 13);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(15, 23, 42); // #0f172a
+        const rankSummaryText = `Rank #${leaderboardContext.rank} of ${leaderboardContext.totalStudents} Students  •  Overall Score: ${leaderboardContext.overallScore || 0} pts`;
+        doc.text(rankSummaryText, margin + 14, currentY + 26);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        const scopeLabel = !leaderboardContext.batchFilter || leaderboardContext.batchFilter === 'ALL'
+          ? 'Institution-Wide (All Batches)'
+          : `Batch: ${leaderboardContext.batchFilter}`;
+        const timelineLabel = (leaderboardContext.startDate && leaderboardContext.endDate)
+          ? `${leaderboardContext.startDate} to ${leaderboardContext.endDate}`
+          : 'All-Time Cumulative Academic Evaluation';
+        doc.text(`Evaluation Scope: ${scopeLabel}  |  Timeline: ${timelineLabel}`, margin + 14, currentY + 37);
+
+        currentY += lbStandingHeight + 12;
+      }
+
+      // --- 6. Wholesome Institutional Message from The Prime Classes ---
       if (currentY > pageHeight - msgBoxHeight - 35) {
         doc.addPage();
         currentY = margin + 12;
       }
 
-      const boxWidth = pageWidth - margin * 2;
       doc.setFillColor(250, 245, 255); // #faf5ff soft lavender
       doc.setDrawColor(216, 180, 254); // #d8b4fe
       doc.setLineWidth(0.75);
@@ -558,19 +603,48 @@ export default function ReportView({
       doc.setTextColor(100, 116, 139);
       doc.text('Mentoring Champions for RIMC • RMS • Sainik School • Foundation', margin + 14, signY + 8.5);
 
-      // Footer with page numbering
+      // Footer with page numbering & verified standing if leaderboardContext
       const totalPages = doc.internal.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
         doc.setTextColor(148, 163, 184);
-        doc.text(
-          `The Prime Classes — Official Student Performance Report Card  |  Page ${i} of ${totalPages}`,
-          pageWidth / 2,
-          pageHeight - 16,
-          { align: 'center' }
-        );
+
+        if (i === totalPages && leaderboardContext) {
+          const scopeLabel = !leaderboardContext.batchFilter || leaderboardContext.batchFilter === 'ALL'
+            ? 'All Batches'
+            : `Batch ${leaderboardContext.batchFilter}`;
+          const timelineLabel = (leaderboardContext.startDate && leaderboardContext.endDate)
+            ? `${leaderboardContext.startDate} to ${leaderboardContext.endDate}`
+            : 'All-Time';
+
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(180, 83, 9); // Amber gold
+          doc.text(
+            `* Verified Institutional Standing: Rank #${leaderboardContext.rank} of ${leaderboardContext.totalStudents} (${scopeLabel} * ${timelineLabel})`,
+            pageWidth / 2,
+            pageHeight - 22,
+            { align: 'center' }
+          );
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7.5);
+          doc.setTextColor(148, 163, 184);
+          doc.text(
+            `The Prime Classes — Official Student Performance Report Card  |  Page ${i} of ${totalPages}`,
+            pageWidth / 2,
+            pageHeight - 14,
+            { align: 'center' }
+          );
+        } else {
+          doc.text(
+            `The Prime Classes — Official Student Performance Report Card  |  Page ${i} of ${totalPages}`,
+            pageWidth / 2,
+            pageHeight - 16,
+            { align: 'center' }
+          );
+        }
       }
 
       const fileName = `The_Prime_Classes_Report_${profile.studentName.replace(/[^a-zA-Z0-9]/g, '_')}_${profile.studentId}.pdf`;
@@ -1213,6 +1287,52 @@ export default function ReportView({
         </div>
       </section>
 
+      {/* Official Institutional Leaderboard Standing (Rendered only when opened from Leaderboard) */}
+      {leaderboardContext && (
+        <section className="glass leaderboard-standing-banner">
+          <div className="standing-badge-icon">
+            <Trophy size={32} className="trophy-gold" />
+          </div>
+          <div className="standing-details">
+            <div className="standing-tag">
+              <Sparkles size={13} />
+              <span>Official Institutional Leaderboard Standing</span>
+            </div>
+            <div className="standing-title">
+              Rank #{leaderboardContext.rank} <span className="standing-title-sub">of {leaderboardContext.totalStudents} Students</span>
+              {leaderboardContext.overallScore !== undefined && (
+                <span className="standing-score">• {leaderboardContext.overallScore} Overall Pts</span>
+              )}
+            </div>
+            <div className="standing-meta">
+              <span>
+                <strong>Evaluation Scope:</strong>{' '}
+                {!leaderboardContext.batchFilter || leaderboardContext.batchFilter === 'ALL'
+                  ? 'Institution-Wide (All Batches)'
+                  : `Batch: ${leaderboardContext.batchFilter}`}
+              </span>
+              <span className="standing-dot">&bull;</span>
+              <span>
+                <strong>Timeline:</strong>{' '}
+                {leaderboardContext.startDate && leaderboardContext.endDate
+                  ? `${leaderboardContext.startDate} to ${leaderboardContext.endDate}`
+                  : 'All-Time Cumulative Academic Evaluation'}
+              </span>
+              {leaderboardContext.subjectFilter && leaderboardContext.subjectFilter !== 'ALL' && (
+                <>
+                  <span className="standing-dot">&bull;</span>
+                  <span><strong>Subject:</strong> {leaderboardContext.subjectFilter}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="standing-rank-pill">
+            <span className="standing-rank-number">#{leaderboardContext.rank}</span>
+            <span className="standing-rank-label">Rank</span>
+          </div>
+        </section>
+      )}
+
       {/* Wholesome Institutional Message from The Prime Classes */}
       <section className="glass prime-message-card">
         <div className="prime-message-header">
@@ -1253,6 +1373,22 @@ export default function ReportView({
           </div>
         </div>
       </section>
+
+      {/* Verified Leaderboard Standing Footer Bar (when opened from Leaderboard) */}
+      {leaderboardContext && (
+        <div className="report-verified-footer-note">
+          <Trophy size={16} className="trophy-gold" />
+          <span>
+            <strong>Verified Institutional Standing:</strong> This report reflects <strong>Rank #{leaderboardContext.rank}</strong> of {leaderboardContext.totalStudents} students in{' '}
+            {!leaderboardContext.batchFilter || leaderboardContext.batchFilter === 'ALL'
+              ? 'All Batches'
+              : `Batch ${leaderboardContext.batchFilter}`}{' '}
+            ({leaderboardContext.startDate && leaderboardContext.endDate
+              ? `${leaderboardContext.startDate} to ${leaderboardContext.endDate}`
+              : 'All-Time Cumulative Academic Evaluation'}).
+          </span>
+        </div>
+      )}
 
       {/* Complaints Submission Modal */}
       <ComplaintsModal

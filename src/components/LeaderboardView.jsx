@@ -91,34 +91,35 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
     return () => clearTimeout(timer);
   }, [selectedBatch, selectedSubject, startDate, endDate, searchQuery]);
 
-  // Handle Preset Ranges
-  const handleRangeChange = (range) => {
-    setDateRange(range);
-    if (range === 'all') {
-      setStartDate('');
-      setEndDate('');
-    } else if (range === '30d') {
-      const end = new Date();
-      const start = new Date();
-      start.setDate(end.getDate() - 30);
-      setStartDate(start.toISOString().split('T')[0]);
-      setEndDate(end.toISOString().split('T')[0]);
-    } else if (range === '90d') {
-      const end = new Date();
-      const start = new Date();
-      start.setDate(end.getDate() - 90);
-      setStartDate(start.toISOString().split('T')[0]);
-      setEndDate(end.toISOString().split('T')[0]);
-    }
-  };
-
   const handleResetFilters = () => {
     setSelectedBatch('ALL');
     setSelectedSubject('ALL');
-    setDateRange('all');
     setStartDate('');
     setEndDate('');
     setSearchQuery('');
+  };
+
+  const handleOpenStudentReport = (student) => {
+    if (!student) return;
+    const sId = student.studentId || student.id;
+    const foundIdx = studentsList.findIndex(s => s.studentId === sId);
+    const assignedRank = student.rank || (foundIdx !== -1 ? foundIdx + 1 : 1);
+    const overallScore = student.overallScore !== undefined
+      ? student.overallScore
+      : (foundIdx !== -1 ? studentsList[foundIdx]?.overallScore : 0);
+
+    const rankingContext = {
+      source: 'leaderboard',
+      rank: assignedRank,
+      totalStudents: studentsList.length,
+      overallScore: Number(overallScore) || 0,
+      batchFilter: selectedBatch,
+      subjectFilter: selectedSubject,
+      startDate: startDate || '',
+      endDate: endDate || ''
+    };
+
+    onSelectStudent(student, rankingContext);
   };
 
   const studentsList = leaderboardData?.students || [];
@@ -285,7 +286,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
               <button
                 type="button"
                 className="btn btn-sm btn-secondary"
-                onClick={() => onSelectStudent(topThree[1])}
+                onClick={() => handleOpenStudentReport(topThree[1])}
                 style={{ fontSize: '12px', fontWeight: 700 }}
               >
                 View Report
@@ -351,7 +352,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
               <button
                 type="button"
                 className="btn btn-sm btn-primary"
-                onClick={() => onSelectStudent(topThree[0])}
+                onClick={() => handleOpenStudentReport(topThree[0])}
                 style={{ fontSize: '12px', fontWeight: 800, padding: '8px 16px', boxShadow: '0 4px 12px rgba(107, 33, 168, 0.25)' }}
               >
                 View Report
@@ -413,7 +414,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
               <button
                 type="button"
                 className="btn btn-sm btn-secondary"
-                onClick={() => onSelectStudent(topThree[2])}
+                onClick={() => handleOpenStudentReport(topThree[2])}
                 style={{ fontSize: '12px', fontWeight: 700 }}
               >
                 View Report
@@ -535,36 +536,72 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
             </select>
           </div>
 
-          {/* Date Range Selector */}
-          <div className="leaderboard-filter-item" style={{ flex: '1 1 240px', minWidth: '220px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-              Timeline Filter
-            </label>
-            <div style={{ display: 'flex', gap: '4px' }}>
+          {/* Date Filter (From Date -> To Date) */}
+          <div className="leaderboard-filter-item" style={{ flex: '1 1 320px', minWidth: '280px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                Date Filter
+              </label>
+              {(startDate || endDate) && (
+                <button
+                  type="button"
+                  onClick={() => { setStartDate(''); setEndDate(''); }}
+                  style={{ background: 'none', border: 'none', color: 'var(--tpc-purple)', fontSize: '11px', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                >
+                  Clear (All Time)
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <button
                 type="button"
-                className={`btn btn-sm ${dateRange === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => handleRangeChange('all')}
-                style={{ fontSize: '11px', padding: '6px 10px', flex: 1 }}
+                className={`btn btn-sm ${!startDate && !endDate ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => { setStartDate(''); setEndDate(''); }}
+                style={{ fontSize: '11px', padding: '6px 12px', minHeight: '38px', height: '38px', whiteSpace: 'nowrap' }}
               >
                 All Time
               </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${dateRange === '30d' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => handleRangeChange('30d')}
-                style={{ fontSize: '11px', padding: '6px 10px', flex: 1 }}
-              >
-                30 Days
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${dateRange === '90d' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => handleRangeChange('90d')}
-                style={{ fontSize: '11px', padding: '6px 10px', flex: 1 }}
-              >
-                90 Days
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  title="Start Date"
+                  aria-label="Start Date"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: '38px',
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    border: startDate ? '1.5px solid var(--tpc-purple)' : '1px solid var(--stroke)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: 'var(--text-main)',
+                    background: startDate ? 'rgba(124, 58, 237, 0.04)' : 'white'
+                  }}
+                />
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700 }}>to</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  title="End Date"
+                  aria-label="End Date"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: '38px',
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    border: endDate ? '1.5px solid var(--tpc-purple)' : '1px solid var(--stroke)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: 'var(--text-main)',
+                    background: endDate ? 'rgba(124, 58, 237, 0.04)' : 'white'
+                  }}
+                />
+              </div>
             </div>
           </div>
 
@@ -586,7 +623,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           </div>
 
           {/* Reset button */}
-          {(selectedBatch !== 'ALL' || selectedSubject !== 'ALL' || dateRange !== 'all' || searchQuery) && (
+          {(selectedBatch !== 'ALL' || selectedSubject !== 'ALL' || startDate || endDate || searchQuery) && (
             <div style={{ alignSelf: 'flex-end' }}>
               <button
                 type="button"
@@ -768,7 +805,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                                   type="button"
                                   className="btn btn-sm btn-primary"
                                   title="Open Student Report Card"
-                                  onClick={() => onSelectStudent(s)}
+                                  onClick={() => handleOpenStudentReport(s)}
                                   style={{ padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700 }}
                                 >
                                   <Eye size={13} />
@@ -944,8 +981,8 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                             cursor: 'pointer'
                           }}
                           onClick={() => {
-                            const fullStudent = studentsList.find(x => x.studentId === st.id) || { studentId: st.id, studentName: st.name, batch: selectedThresholdBatch.batchName };
-                            onSelectStudent(fullStudent);
+                            const fullStudent = studentsList.find(x => x.studentId === st.id) || { studentId: st.id, studentName: st.name, batch: selectedThresholdBatch.batchName, overallScore: st.overall };
+                            handleOpenStudentReport(fullStudent);
                           }}
                         >
                           <div>
@@ -1048,7 +1085,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           studentName={calcModalStudent.studentName}
           batch={calcModalStudent.batch}
           onDownloadPdf={() => {
-            onSelectStudent(calcModalStudent);
+            handleOpenStudentReport(calcModalStudent);
             setCalcModalStudent(null);
           }}
           downloadingPdf={false}

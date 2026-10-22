@@ -17,6 +17,7 @@ export default function App() {
 
   const [currentView, setCurrentView] = useState('report'); // 'report' | 'leaderboard'
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [leaderboardContext, setLeaderboardContext] = useState(null);
   const [reportData, setReportData] = useState(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const [startDate, setStartDate] = useState('');
@@ -75,6 +76,7 @@ export default function App() {
 
   const handleSelectStudent = (student) => {
     setSelectedStudent(student);
+    setLeaderboardContext(null); // Direct search does not have active leaderboard rank filter
     setStartDate('');
     setEndDate('');
     fetchReport(student.studentId, '', '');
@@ -90,23 +92,27 @@ export default function App() {
 
   const handleBackToSearch = () => {
     setSelectedStudent(null);
+    setLeaderboardContext(null);
     setReportData(null);
     setStartDate('');
     setEndDate('');
     setCurrentView('report');
   };
 
-  const handleSelectStudentFromLeaderboard = (student) => {
+  const handleSelectStudentFromLeaderboard = (student, context = null) => {
     const studentObj = {
       studentId: student.studentId || student.id,
       studentName: student.name || student.studentName,
       batch: student.batch || student.batchName
     };
     setSelectedStudent(studentObj);
+    setLeaderboardContext(context);
     setCurrentView('report');
-    setStartDate('');
-    setEndDate('');
-    fetchReport(studentObj.studentId, '', '');
+    const start = context?.startDate || '';
+    const end = context?.endDate || '';
+    setStartDate(start);
+    setEndDate(end);
+    fetchReport(studentObj.studentId, start, end);
   };
 
   if (!teacher) {
@@ -151,6 +157,7 @@ export default function App() {
             onDateFilterChange={handleDateFilterChange}
             onShowToast={showToast}
             onRefreshReport={() => fetchReport(selectedStudent.studentId, startDate, endDate)}
+            leaderboardContext={leaderboardContext}
           />
         )}
       </main>
