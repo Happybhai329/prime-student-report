@@ -405,7 +405,7 @@ export default function CalculationPreviewModal({
 
               {/* Tab 2: Test Breakdown Table */}
               {activeTab === 'tests' && (
-                <div style={{ overflowX: 'auto' }}>
+                <div className="table-responsive-touch">
                   <table className="results-table" style={{ fontSize: '12px' }}>
                     <thead>
                       <tr>
@@ -446,7 +446,7 @@ export default function CalculationPreviewModal({
 
               {/* Tab 3: Subject Breakdown Table */}
               {activeTab === 'subjects' && (
-                <div style={{ overflowX: 'auto' }}>
+                <div className="table-responsive-touch">
                   <table className="results-table" style={{ fontSize: '12px' }}>
                     <thead>
                       <tr>

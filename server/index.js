@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -20,6 +21,9 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 app.use(cors());
+app.use(compression({
+  threshold: 1024
+}));
 app.use(express.json({ limit: '10mb' }));
 
 // Request logger (skips repetitive uptime pings)
@@ -292,29 +296,40 @@ app.get('/api/students/:id/report', async (req, res) => {
 
     const studentRecord = studentRes.rows[0];
 
-    // 2. Fetch Batch Context (specific columns)
+    // 2. Concurrently fetch Batch Context, Attendance, Homework, Exams, and Complaints
+    let examSql = 'SELECT test_id, exam_date, batch_name, exam_type, student_id, rank, total_obtained_marks, exam_total_max_marks, subject_name, subject_obtained_marks, subject_max_marks FROM exam_results WHERE LOWER(student_id) = LOWER($1)';
+    const examParams = [studentId];
+    if (req.query.batch) {
+      examSql += ' AND (LOWER(batch_name) = LOWER($2) OR LOWER(batch_id) = LOWER($2))';
+      examParams.push(cleanText(req.query.batch));
+    }
+
+    const [batchRes, attRes, hwRes, examRes, compRes] = await Promise.all([
+      studentRecord.batch
+        ? query('SELECT batch_name, classroom, writing_class, actual_class, subjects_offered FROM batches WHERE LOWER(batch_name) = LOWER($1)', [studentRecord.batch])
+        : Promise.resolve({ rows: [] }),
+      query('SELECT date, batch, presence_type, teacher_id, teacher_name, call_reason FROM attendance WHERE LOWER(student_id) = LOWER($1)', [studentId]),
+      query('SELECT date, subject, status, final_status, duration_min, teacher_id, teacher_name, start_time, end_time FROM homework WHERE LOWER(student_id) = LOWER($1)', [studentId]),
+      query(examSql, examParams),
+      query('SELECT complaint_id, date, teacher_name, teacher_employee_id, department, student_name, student_id, batch, complaint_text, status, pdf_link, submitted_at FROM complaints WHERE LOWER(student_id) = LOWER($1)', [studentId])
+    ]);
+
     let batchContext = null;
-    if (studentRecord.batch) {
-      const batchRes = await query(
-        'SELECT batch_name, classroom, writing_class, actual_class, subjects_offered FROM batches WHERE LOWER(batch_name) = LOWER($1)',
-        [studentRecord.batch]
-      );
-      if (batchRes.rows.length) {
-        const b = batchRes.rows[0];
-        let subjects = [];
-        try {
-          subjects = JSON.parse(b.subjects_offered || '[]');
-        } catch {
-          subjects = (b.subjects_offered || '').split(',').map(s => s.trim()).filter(Boolean);
-        }
-        batchContext = {
-          batchName: b.batch_name,
-          classRoom: b.classroom || '-',
-          writingClass: b.writing_class || '-',
-          actualClass: b.actual_class || '-',
-          subjectsOffered: subjects
-        };
+    if (batchRes.rows.length) {
+      const b = batchRes.rows[0];
+      let subjects = [];
+      try {
+        subjects = JSON.parse(b.subjects_offered || '[]');
+      } catch {
+        subjects = (b.subjects_offered || '').split(',').map(s => s.trim()).filter(Boolean);
       }
+      batchContext = {
+        batchName: b.batch_name,
+        classRoom: b.classroom || '-',
+        writingClass: b.writing_class || '-',
+        actualClass: b.actual_class || '-',
+        subjectsOffered: subjects
+      };
     }
 
     const profile = {
@@ -331,11 +346,7 @@ app.get('/api/students/:id/report', async (req, res) => {
       batchContext
     };
 
-    // 3. Attendance
-    const attRes = await query(
-      'SELECT date, batch, presence_type, teacher_id, teacher_name, call_reason FROM attendance WHERE LOWER(student_id) = LOWER($1)',
-      [studentId]
-    );
+    // 3. Attendance Processing
 
     const filteredAtt = attRes.rows.filter(r => isDateInRange(r.date, startKey, endKey));
     filteredAtt.sort((a, b) => parseDateKey(b.date) - parseDateKey(a.date));
@@ -368,12 +379,7 @@ app.get('/api/students/:id/report', async (req, res) => {
       }))
     };
 
-    // 4. Homework
-    const hwRes = await query(
-      'SELECT date, subject, status, final_status, duration_min, teacher_id, teacher_name, start_time, end_time FROM homework WHERE LOWER(student_id) = LOWER($1)',
-      [studentId]
-    );
-
+    // 4. Homework Processing
     const filteredHw = hwRes.rows.filter(r => isDateInRange(r.date, startKey, endKey));
     filteredHw.sort((a, b) => parseDateKey(b.date) - parseDateKey(a.date));
 
@@ -414,15 +420,7 @@ app.get('/api/students/:id/report', async (req, res) => {
       }))
     };
 
-    // 5. Exam Results (Low-egress indexed query filtering by student and optional batch)
-    let examSql = 'SELECT test_id, exam_date, batch_name, exam_type, student_id, rank, total_obtained_marks, exam_total_max_marks, subject_name, subject_obtained_marks, subject_max_marks FROM exam_results WHERE LOWER(student_id) = LOWER($1)';
-    const examParams = [studentId];
-    if (req.query.batch) {
-      examSql += ' AND (LOWER(batch_name) = LOWER($2) OR LOWER(batch_id) = LOWER($2))';
-      examParams.push(cleanText(req.query.batch));
-    }
-    const examRes = await query(examSql, examParams);
-
+    // 5. Exam Results Processing
     const filteredExams = examRes.rows.filter(r => isDateInRange(r.exam_date, startKey, endKey));
 
     const testsByKey = {};
@@ -565,12 +563,7 @@ app.get('/api/students/:id/report', async (req, res) => {
       rows: testRows
     };
 
-    // 6. Complaints
-    const compRes = await query(
-      'SELECT complaint_id, date, teacher_name, teacher_employee_id, department, student_name, student_id, batch, complaint_text, status, pdf_link, submitted_at FROM complaints WHERE LOWER(student_id) = LOWER($1)',
-      [studentId]
-    );
-
+    // 6. Complaints Processing
     const filteredComplaints = compRes.rows.filter(r => isDateInRange(r.date, startKey, endKey));
     filteredComplaints.sort((a, b) => parseDateKey(b.date) - parseDateKey(a.date));
 
@@ -755,9 +748,21 @@ app.get('/api/students/:id/calculations', async (req, res) => {
 const distPath = path.join(__dirname, '../dist');
 if (fs.existsSync(distPath)) {
   console.log(`Serving static production build from ${distPath}`);
-  app.use(express.static(distPath));
+  app.use('/assets', express.static(path.join(distPath, 'assets'), {
+    maxAge: '1y',
+    immutable: true
+  }));
+  app.use(express.static(distPath, {
+    maxAge: '1h',
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    }
+  }));
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api') && !req.path.startsWith('/health') && !req.path.startsWith('/ping') && !req.path.startsWith('/uptime')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.join(distPath, 'index.html'));
     }
   });

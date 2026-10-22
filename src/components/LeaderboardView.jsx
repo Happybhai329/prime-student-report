@@ -144,7 +144,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
         overflow: 'hidden',
         boxShadow: 'var(--shadow-glass)'
       }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '20px' }}>
+        <div className="leaderboard-header-row">
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
               <span className="badge badge-purple" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800 }}>
@@ -164,7 +164,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           </div>
 
           {/* Quick Highlight Stats Pills */}
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div className="leaderboard-highlights-grid">
             <div style={{
               background: 'white',
               borderRadius: '16px',
@@ -230,19 +230,16 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
 
       {/* Podium Showcase (Top 3 Performers) - Displayed when viewing All Batches */}
       {topThree.length >= 3 && !searchQuery && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px', marginBottom: '28px' }}>
+        <div className="podium-container">
           {/* #2 Silver */}
-          <div style={{
-            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-            border: '2px solid #cbd5e1',
-            borderRadius: '20px',
-            padding: '22px',
-            boxShadow: '0 8px 24px rgba(148, 163, 184, 0.15)',
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between'
-          }}>
+          <div
+            className="podium-card silver-card"
+            style={{
+              background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+              border: '2px solid #cbd5e1',
+              boxShadow: '0 8px 24px rgba(148, 163, 184, 0.15)'
+            }}
+          >
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{
@@ -297,19 +294,14 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           </div>
 
           {/* #1 GOLD CHAMPION */}
-          <div style={{
-            background: 'linear-gradient(180deg, #fffbeb 0%, #ffffff 100%)',
-            border: '2.5px solid #f59e0b',
-            borderRadius: '24px',
-            padding: '24px',
-            boxShadow: '0 12px 32px rgba(245, 158, 11, 0.22)',
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            transform: 'scale(1.03)',
-            zIndex: 2
-          }}>
+          <div
+            className="podium-card gold-card"
+            style={{
+              background: 'linear-gradient(180deg, #fffbeb 0%, #ffffff 100%)',
+              border: '2.5px solid #f59e0b',
+              boxShadow: '0 12px 32px rgba(245, 158, 11, 0.22)'
+            }}
+          >
             <div style={{ position: 'absolute', top: '-14px', right: '24px', background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: 'white', borderRadius: '20px', padding: '4px 14px', fontSize: '11px', fontWeight: 900, letterSpacing: '0.5px', boxShadow: '0 4px 12px rgba(217, 119, 6, 0.3)' }}>
               TOP PERFORMER
             </div>
@@ -368,17 +360,14 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           </div>
 
           {/* #3 Bronze */}
-          <div style={{
-            background: 'linear-gradient(180deg, #ffffff 0%, #fff7ed 100%)',
-            border: '2px solid #fdba74',
-            borderRadius: '20px',
-            padding: '22px',
-            boxShadow: '0 8px 24px rgba(251, 146, 60, 0.15)',
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between'
-          }}>
+          <div
+            className="podium-card bronze-card"
+            style={{
+              background: 'linear-gradient(180deg, #ffffff 0%, #fff7ed 100%)',
+              border: '2px solid #fdba74',
+              boxShadow: '0 8px 24px rgba(251, 146, 60, 0.15)'
+            }}
+          >
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{
@@ -532,9 +521,9 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
         </div>
 
         {/* Filters Row */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', alignItems: 'center' }}>
+        <div className="leaderboard-filters-wrap">
           {/* Batch Filter */}
-          <div style={{ flex: '1 1 200px', minWidth: '180px' }}>
+          <div className="leaderboard-filter-item" style={{ flex: '1 1 200px', minWidth: '180px' }}>
             <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
               Select Batch
             </label>
@@ -552,7 +541,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           </div>
 
           {/* Subject Filter */}
-          <div style={{ flex: '1 1 180px', minWidth: '160px' }}>
+          <div className="leaderboard-filter-item" style={{ flex: '1 1 180px', minWidth: '160px' }}>
             <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
               Subject Filter
             </label>
@@ -570,7 +559,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           </div>
 
           {/* Date Range Selector */}
-          <div style={{ flex: '1 1 240px', minWidth: '220px' }}>
+          <div className="leaderboard-filter-item" style={{ flex: '1 1 240px', minWidth: '220px' }}>
             <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
               Timeline Filter
             </label>
@@ -603,7 +592,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           </div>
 
           {/* Search Box */}
-          <div style={{ flex: '2 1 240px', minWidth: '220px' }}>
+          <div className="leaderboard-filter-item" style={{ flex: '2 1 240px', minWidth: '220px' }}>
             <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
               Search in Leaderboard
             </label>
@@ -669,7 +658,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                   <p style={{ fontSize: '13px' }}>Try selecting "All Batches" or clearing your search term.</p>
                 </div>
               ) : (
-                <div style={{ overflowX: 'auto' }}>
+                <div className="table-responsive-touch">
                   <table className="results-table" style={{ fontSize: '13px', width: '100%' }}>
                     <thead>
                       <tr>
@@ -858,7 +847,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
               </div>
 
               {/* Batches Table */}
-              <div style={{ overflowX: 'auto', marginBottom: '24px' }}>
+              <div className="table-responsive-touch" style={{ marginBottom: '24px' }}>
                 <table className="results-table" style={{ fontSize: '13px', width: '100%' }}>
                   <thead>
                     <tr>
@@ -1003,7 +992,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
 
           {/* TAB 3: SUBJECT PERFORMANCE */}
           {activeTab === 'subjects' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '18px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '16px' }}>
               {subjectList.map((subj) => (
                 <div
                   key={subj.subject}
@@ -1078,7 +1067,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                 </span>
               </div>
 
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-responsive-touch">
                 <table className="results-table" style={{ fontSize: '13px', width: '100%' }}>
                   <thead>
                     <tr>
