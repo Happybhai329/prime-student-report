@@ -351,7 +351,7 @@ export async function getLeaderboardData({
     SELECT 
       subject_name,
       batch_name,
-      ROUND(AVG((subject_obtained_marks / NULLIF(subject_max_marks, 0)) * 100)::numeric, 1) as avg_pct,
+      ROUND(AVG(LEAST(100, (subject_obtained_marks / NULLIF(subject_max_marks, 0)) * 100))::numeric, 1) as avg_pct,
       ROUND(AVG(subject_obtained_marks)::numeric, 1) as avg_obtained,
       ROUND(AVG(subject_max_marks)::numeric, 1) as avg_max,
       COUNT(DISTINCT student_id) as student_count
@@ -607,13 +607,24 @@ export async function getStudentCalculations(studentId, { startDate = '', endDat
     }
 
     if (r.subject_name) {
-      const subObt = Number(r.subject_obtained_marks) || 0;
-      const subMax = Number(r.subject_max_marks) || 0;
+      const rawObt = Number(r.subject_obtained_marks) || 0;
+      let rawMax = Number(r.subject_max_marks) || 0;
+      if (rawMax <= 0 || rawObt > rawMax) {
+        if (rawObt > 150) rawMax = 200;
+        else if (rawObt > 100) rawMax = 150;
+        else if (rawObt > 50) rawMax = 100;
+        else if (rawObt > 30) rawMax = 50;
+        else if (rawObt > 20) rawMax = 30;
+        else if (rawMax <= 0) rawMax = 50;
+        else rawMax = Math.ceil(rawObt / 10) * 10;
+      }
+      const subObt = rawObt;
+      const subMax = rawMax;
       testMap.get(tId).subjects.push({
         subjectName: r.subject_name,
         obtained: subObt,
         maxMarks: subMax,
-        percentage: subMax > 0 ? round((subObt / subMax) * 100, 1) : 0
+        percentage: subMax > 0 ? Math.min(100, Math.max(0, round((subObt / subMax) * 100, 1))) : 0
       });
 
       if (!subjectMap.has(r.subject_name)) {

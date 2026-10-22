@@ -429,8 +429,19 @@ app.get('/api/students/:id/report', async (req, res) => {
     filteredExams.forEach(r => {
       const testKey = [r.test_id, r.exam_date, r.exam_type, r.batch_name].map(s => cleanText(s)).join('::');
       const subject = r.subject_name || 'Unknown Subject';
-      const obtained = Number(r.subject_obtained_marks) || 0;
-      const maxMarks = Number(r.subject_max_marks) || 0;
+      const rawObt = Number(r.subject_obtained_marks) || 0;
+      let rawMax = Number(r.subject_max_marks) || 0;
+      if (rawMax <= 0 || rawObt > rawMax) {
+        if (rawObt > 150) rawMax = 200;
+        else if (rawObt > 100) rawMax = 150;
+        else if (rawObt > 50) rawMax = 100;
+        else if (rawObt > 30) rawMax = 50;
+        else if (rawObt > 20) rawMax = 30;
+        else if (rawMax <= 0) rawMax = 50;
+        else rawMax = Math.ceil(rawObt / 10) * 10;
+      }
+      const obtained = rawObt;
+      const maxMarks = rawMax;
       const totalObtained = Number(r.total_obtained_marks) || 0;
       const totalMax = Number(r.exam_total_max_marks) || 0;
       const rank = Number(r.rank) || null;
@@ -459,11 +470,13 @@ app.get('/api/students/:id/report', async (req, res) => {
       });
 
       if (!subjectMap[subject]) {
-        subjectMap[subject] = { obtained: 0, maxMarks: 0, count: 0 };
+        subjectMap[subject] = { obtained: 0, maxMarks: 0, count: 0, pcts: [] };
       }
       subjectMap[subject].obtained += obtained;
       subjectMap[subject].maxMarks += maxMarks;
       subjectMap[subject].count += 1;
+      const testSubPct = maxMarks > 0 ? Math.min(100, Math.max(0, (obtained / maxMarks) * 100)) : 0;
+      subjectMap[subject].pcts.push(testSubPct);
     });
 
     const testRows = Object.values(testsByKey).map(test => {
@@ -531,7 +544,10 @@ app.get('/api/students/:id/report', async (req, res) => {
 
     const subjectWise = Object.keys(subjectMap).map(subName => {
       const stats = subjectMap[subName];
-      const percentage = stats.maxMarks ? round((stats.obtained / stats.maxMarks) * 100, 1) : 0;
+      const avgPct = stats.pcts && stats.pcts.length
+        ? round(stats.pcts.reduce((a, b) => a + b, 0) / stats.pcts.length, 1)
+        : (stats.maxMarks ? round(Math.min(100, (stats.obtained / stats.maxMarks) * 100), 1) : 0);
+      const percentage = Math.min(100, Math.max(0, avgPct));
       let status = 'Average';
       if (percentage >= 80) status = 'Strong';
       else if (percentage < 50) status = 'Weak';

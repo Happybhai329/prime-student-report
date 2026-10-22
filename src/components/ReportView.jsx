@@ -141,12 +141,26 @@ export default function ReportView({
     filteredExamRows.forEach(test => {
       (test.subjects || []).forEach(s => {
         if (!s.subjectName) return;
-        if (!subMap[s.subjectName]) {
-          subMap[s.subjectName] = { obtained: 0, maxMarks: 0, count: 0 };
+        const rawObt = Number(s.subjectObtainedMarks) || 0;
+        let rawMax = Number(s.subjectMaxMarks) || 0;
+        if (rawMax <= 0 || rawObt > rawMax) {
+          if (rawObt > 150) rawMax = 200;
+          else if (rawObt > 100) rawMax = 150;
+          else if (rawObt > 50) rawMax = 100;
+          else if (rawObt > 30) rawMax = 50;
+          else if (rawObt > 20) rawMax = 30;
+          else if (rawMax <= 0) rawMax = 50;
+          else rawMax = Math.ceil(rawObt / 10) * 10;
         }
-        subMap[s.subjectName].obtained += Number(s.subjectObtainedMarks) || 0;
-        subMap[s.subjectName].maxMarks += Number(s.subjectMaxMarks) || 0;
+
+        if (!subMap[s.subjectName]) {
+          subMap[s.subjectName] = { obtained: 0, maxMarks: 0, count: 0, pcts: [] };
+        }
+        subMap[s.subjectName].obtained += rawObt;
+        subMap[s.subjectName].maxMarks += rawMax;
         subMap[s.subjectName].count += 1;
+        const testSubPct = rawMax > 0 ? Math.min(100, Math.max(0, (rawObt / rawMax) * 100)) : 0;
+        subMap[s.subjectName].pcts.push(testSubPct);
       });
     });
     if (Object.keys(subMap).length === 0) {
@@ -154,15 +168,18 @@ export default function ReportView({
     }
     return Object.keys(subMap).map(subName => {
       const stats = subMap[subName];
-      const pct = stats.maxMarks > 0 ? Number(((stats.obtained / stats.maxMarks) * 100).toFixed(1)) : 0;
+      const avgPct = stats.pcts && stats.pcts.length
+        ? Number((stats.pcts.reduce((a, b) => a + b, 0) / stats.pcts.length).toFixed(1))
+        : (stats.maxMarks > 0 ? Number(Math.min(100, (stats.obtained / stats.maxMarks) * 100).toFixed(1)) : 0);
+      const percentage = Math.min(100, Math.max(0, avgPct));
       let status = 'Average';
-      if (pct >= 80) status = 'Strong';
-      else if (pct < 50) status = 'Weak';
+      if (percentage >= 80) status = 'Strong';
+      else if (percentage < 50) status = 'Weak';
       return {
         subjectName: subName,
         averageObtainedMarks: Number((stats.obtained / stats.count).toFixed(1)),
         averageMaxMarks: Number((stats.maxMarks / stats.count).toFixed(1)),
-        percentage: pct,
+        percentage,
         status
       };
     });

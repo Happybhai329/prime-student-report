@@ -182,21 +182,35 @@ export async function runFullInboundSync() {
       console.log(`[SyncEngine] Ingesting ${examResults.length} exam result records...`);
       await query('DELETE FROM exam_results');
       await query('DELETE FROM test_results');
-      const examData = examResults.map(r => ({
-        test_id: r.testId,
-        exam_date: r.examDate,
-        batch_name: r.batchName,
-        batch_id: r.batchName,
-        exam_type: r.examType,
-        student_id: r.studentId,
-        student_name: r.studentName,
-        rank: r.rank,
-        total_obtained_marks: r.totalObtainedMarks,
-        exam_total_max_marks: r.examTotalMaxMarks,
-        subject_name: r.subjectName,
-        subject_obtained_marks: r.subjectObtainedMarks,
-        subject_max_marks: r.subjectMaxMarks
-      }));
+      const examData = examResults.map(r => {
+        const rawObt = Number(r.subjectObtainedMarks) || 0;
+        let rawMax = Number(r.subjectMaxMarks) || 0;
+        if (rawMax <= 0 || rawObt > rawMax) {
+          if (rawObt > 150) rawMax = 200;
+          else if (rawObt > 100) rawMax = 150;
+          else if (rawObt > 50) rawMax = 100;
+          else if (rawObt > 30) rawMax = 50;
+          else if (rawObt > 20) rawMax = 30;
+          else if (rawMax <= 0) rawMax = 50;
+          else rawMax = Math.ceil(rawObt / 10) * 10;
+        }
+
+        return {
+          test_id: r.testId,
+          exam_date: r.examDate,
+          batch_name: r.batchName,
+          batch_id: r.batchName,
+          exam_type: r.examType,
+          student_id: r.studentId,
+          student_name: r.studentName,
+          rank: r.rank,
+          total_obtained_marks: r.totalObtainedMarks,
+          exam_total_max_marks: r.examTotalMaxMarks,
+          subject_name: r.subjectName,
+          subject_obtained_marks: rawObt,
+          subject_max_marks: rawMax
+        };
+      });
       await batchInsert(
         'exam_results',
         ['test_id', 'exam_date', 'batch_name', 'batch_id', 'exam_type', 'student_id', 'student_name', 'rank', 'total_obtained_marks', 'exam_total_max_marks', 'subject_name', 'subject_obtained_marks', 'subject_max_marks'],
