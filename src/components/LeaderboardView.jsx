@@ -1142,6 +1142,10 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           studentId={calcModalStudent.studentId}
           studentName={calcModalStudent.studentName}
           batch={calcModalStudent.batch}
+          onOpenReport={() => {
+            handleOpenStudentReport(calcModalStudent);
+            setCalcModalStudent(null);
+          }}
           onDownloadPdf={() => {
             handleOpenStudentReport(calcModalStudent);
             setCalcModalStudent(null);

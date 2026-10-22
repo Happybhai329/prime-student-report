@@ -1461,6 +1461,7 @@ export default function ReportView({
         studentId={profile?.studentId}
         studentName={profile?.studentName}
         batch={profile?.batch}
+        onOpenReport={() => setShowCalcModal(false)}
         onDownloadPdf={handleDownloadPDF}
         downloadingPdf={downloadingPdf}
       />
