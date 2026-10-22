@@ -3,6 +3,7 @@ import TopNavbar from './components/TopNavbar';
 import LoginView from './components/LoginView';
 import StudentSearch from './components/StudentSearch';
 import ReportView from './components/ReportView';
+import LeaderboardView from './components/LeaderboardView';
 
 export default function App() {
   const [teacher, setTeacher] = useState(() => {
@@ -14,6 +15,7 @@ export default function App() {
     }
   });
 
+  const [currentView, setCurrentView] = useState('report'); // 'report' | 'leaderboard'
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [reportData, setReportData] = useState(null);
   const [loadingReport, setLoadingReport] = useState(false);
@@ -91,6 +93,20 @@ export default function App() {
     setReportData(null);
     setStartDate('');
     setEndDate('');
+    setCurrentView('report');
+  };
+
+  const handleSelectStudentFromLeaderboard = (student) => {
+    const studentObj = {
+      studentId: student.studentId || student.id,
+      studentName: student.name || student.studentName,
+      batch: student.batch || student.batchName
+    };
+    setSelectedStudent(studentObj);
+    setCurrentView('report');
+    setStartDate('');
+    setEndDate('');
+    fetchReport(studentObj.studentId, '', '');
   };
 
   if (!teacher) {
@@ -106,11 +122,18 @@ export default function App() {
         onBackToSearch={handleBackToSearch}
         hasActiveStudent={Boolean(selectedStudent)}
         onShowToast={showToast}
+        currentView={currentView}
+        onViewChange={setCurrentView}
       />
 
       {/* Main Content Area */}
       <main className="app-body">
-        {!selectedStudent ? (
+        {currentView === 'leaderboard' ? (
+          <LeaderboardView
+            onSelectStudent={handleSelectStudentFromLeaderboard}
+            onShowToast={showToast}
+          />
+        ) : !selectedStudent ? (
           <StudentSearch
             onSelectStudent={handleSelectStudent}
             onShowToast={showToast}

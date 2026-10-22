@@ -3,7 +3,9 @@ import {
   RefreshCw,
   LogOut,
   ArrowLeft,
-  ShieldCheck
+  ShieldCheck,
+  Trophy,
+  FileText
 } from 'lucide-react';
 
 export default function TopNavbar({
@@ -11,7 +13,9 @@ export default function TopNavbar({
   onLogout,
   onBackToSearch,
   hasActiveStudent,
-  onShowToast
+  onShowToast,
+  currentView = 'report',
+  onViewChange
 }) {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncLabel, setLastSyncLabel] = useState('');
@@ -93,6 +97,35 @@ export default function TopNavbar({
             RIMC &bull; RMS &bull; SAINIK SCHOOL &bull; FOUNDATION
           </span>
         </div>
+      </div>
+
+      {/* Navigation View Switcher */}
+      <div className="nav-center-switcher">
+        <nav className="nav-tabs-segmented" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentView === 'report'}
+            className={`nav-tab-btn ${currentView === 'report' ? 'active' : ''}`}
+            onClick={() => onViewChange?.('report')}
+          >
+            <FileText size={15} />
+            <span className="nav-tab-text">Student Report</span>
+            {hasActiveStudent && <span className="nav-tab-indicator" title="Active student loaded" />}
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentView === 'leaderboard'}
+            className={`nav-tab-btn ${currentView === 'leaderboard' ? 'active' : ''}`}
+            onClick={() => onViewChange?.('leaderboard')}
+          >
+            <Trophy size={15} />
+            <span className="nav-tab-text">Leaderboard & Rankings</span>
+            <span className="nav-badge-pill">Live</span>
+          </button>
+        </nav>
       </div>
 
       <div className="nav-actions">

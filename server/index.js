@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 
 import { initDatabase, query, getDbType } from './db.js';
 import { runFullInboundSync, startPeriodicSync, getSyncStatus, submitStudentComplaint } from './syncEngine.js';
+import { getFiltersMeta, getLeaderboardData, getStudentCalculations, invalidateLeaderboardCache } from './leaderboardService.js';
 import { generateStudentReportPDF } from './pdfGenerator.js';
 import { fetchRemoteEmployees } from './googleSheets.js';
 
@@ -689,8 +690,63 @@ app.get('/api/sync/status', (req, res) => {
 app.post('/api/sync/trigger', async (req, res) => {
   try {
     const result = await runFullInboundSync();
+    invalidateLeaderboardCache();
     res.json(result);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * 8. Filter Metadata (Batches, Subjects, Exam Types)
+ */
+app.get('/api/filters/meta', async (req, res) => {
+  try {
+    const meta = await getFiltersMeta();
+    res.json(meta);
+  } catch (err) {
+    console.error('Filter meta error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * 9. Institutional Leaderboard & Multi-Dimensional Rankings
+ */
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const { batch, subject, startDate, endDate, search, languageMode } = req.query;
+    const data = await getLeaderboardData({
+      batch: cleanText(batch) || 'ALL',
+      subject: cleanText(subject) || 'ALL',
+      startDate: cleanText(startDate),
+      endDate: cleanText(endDate),
+      search: cleanText(search),
+      languageMode: cleanText(languageMode) || 'AUTO'
+    });
+    res.json(data);
+  } catch (err) {
+    console.error('Leaderboard error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * 10. Itemized Calculation Breakdown & Audit Preview
+ */
+app.get('/api/students/:id/calculations', async (req, res) => {
+  try {
+    const studentId = cleanText(req.params.id);
+    const { startDate, endDate, examType, subject } = req.query;
+    const data = await getStudentCalculations(studentId, {
+      startDate: cleanText(startDate),
+      endDate: cleanText(endDate),
+      examType: cleanText(examType) || 'ALL',
+      subject: cleanText(subject) || 'ALL'
+    });
+    res.json(data);
+  } catch (err) {
+    console.error('Calculations preview error:', err);
     res.status(500).json({ error: err.message });
   }
 });

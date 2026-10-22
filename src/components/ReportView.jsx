@@ -13,7 +13,8 @@ import {
   Building2,
   ShieldAlert,
   Sparkles,
-  Quote
+  Quote,
+  Calculator
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTablePlugin from 'jspdf-autotable';
@@ -25,6 +26,7 @@ import {
   PerformanceTrendChart
 } from './AnalyticsCharts';
 import ComplaintsModal from './ComplaintsModal';
+import CalculationPreviewModal from './CalculationPreviewModal';
 
 const runAutoTable = (doc, options) => {
   if (typeof doc.autoTable === 'function') {
@@ -65,6 +67,7 @@ export default function ReportView({
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [showComplaintModal, setShowComplaintModal] = useState(false);
+  const [showCalcModal, setShowCalcModal] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [selectedExamType, setSelectedExamType] = useState('ALL');
 
@@ -611,6 +614,22 @@ export default function ReportView({
             >
               <PlusCircle size={16} />
               <span>Record Remark</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-secondary report-action-btn"
+              onClick={() => setShowCalcModal(true)}
+              style={{
+                borderColor: 'rgba(124, 58, 237, 0.35)',
+                background: 'linear-gradient(135deg, rgba(124,58,237,0.08), rgba(16,185,129,0.05))',
+                color: 'var(--tpc-purple)',
+                fontWeight: 600
+              }}
+              title="Audit score calculation breakdown and test weightages"
+            >
+              <Calculator size={16} />
+              <span>Audit Calculations</span>
             </button>
 
             <button
@@ -1245,6 +1264,17 @@ export default function ReportView({
         onComplaintSubmitted={() => {
           onRefreshReport?.();
         }}
+      />
+
+      {/* Pre-Download Calculation Audit Modal */}
+      <CalculationPreviewModal
+        isOpen={showCalcModal}
+        onClose={() => setShowCalcModal(false)}
+        studentId={profile?.studentId}
+        studentName={profile?.studentName}
+        batch={profile?.batch}
+        onDownloadPdf={handleDownloadPDF}
+        downloadingPdf={downloadingPdf}
       />
     </div>
   );
