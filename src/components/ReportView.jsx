@@ -15,7 +15,8 @@ import {
   Sparkles,
   Quote,
   Calculator,
-  Trophy
+  Trophy,
+  ArrowLeft
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTablePlugin from 'jspdf-autotable';
@@ -63,7 +64,8 @@ export default function ReportView({
   onDateFilterChange,
   onShowToast,
   onRefreshReport,
-  leaderboardContext = null
+  leaderboardContext = null,
+  onBackToLeaderboard = null
 }) {
   const [activeRange, setActiveRange] = useState('all'); // 'all' | '30d' | '90d' | 'custom'
   const [customStart, setCustomStart] = useState('');
@@ -681,6 +683,24 @@ export default function ReportView({
           </div>
 
           <div className="report-header-actions">
+            {leaderboardContext && onBackToLeaderboard && (
+              <button
+                type="button"
+                className="btn btn-secondary report-action-btn"
+                onClick={onBackToLeaderboard}
+                style={{
+                  borderColor: '#f59e0b',
+                  background: '#fffbeb',
+                  color: '#b45309',
+                  fontWeight: 700
+                }}
+                title="Return to Leaderboard with current filters preserved"
+              >
+                <ArrowLeft size={16} />
+                <span>Back to Leaderboard</span>
+              </button>
+            )}
+
             <button
               type="button"
               className="btn btn-secondary report-action-btn"
@@ -1326,9 +1346,22 @@ export default function ReportView({
               )}
             </div>
           </div>
-          <div className="standing-rank-pill">
-            <span className="standing-rank-number">#{leaderboardContext.rank}</span>
-            <span className="standing-rank-label">Rank</span>
+          <div className="standing-actions">
+            <div className="standing-rank-pill">
+              <span className="standing-rank-number">#{leaderboardContext.rank}</span>
+              <span className="standing-rank-label">Rank</span>
+            </div>
+            {onBackToLeaderboard && (
+              <button
+                type="button"
+                className="standing-back-btn"
+                onClick={onBackToLeaderboard}
+                title="Return to Leaderboard with current filters"
+              >
+                <ArrowLeft size={13} />
+                <span>Return to Board</span>
+              </button>
+            )}
           </div>
         </section>
       )}
@@ -1387,6 +1420,25 @@ export default function ReportView({
               ? `${leaderboardContext.startDate} to ${leaderboardContext.endDate}`
               : 'All-Time Cumulative Academic Evaluation'}).
           </span>
+          {onBackToLeaderboard && (
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={onBackToLeaderboard}
+              style={{
+                color: '#b45309',
+                textDecoration: 'underline',
+                fontWeight: 700,
+                cursor: 'pointer',
+                marginLeft: '8px',
+                padding: '2px 8px',
+                whiteSpace: 'nowrap'
+              }}
+              title="Return to Leaderboard with current filters preserved"
+            >
+              &larr; Back to Leaderboard
+            </button>
+          )}
         </div>
       )}
 

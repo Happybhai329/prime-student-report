@@ -13,6 +13,7 @@ export default function TopNavbar({
   onLogout,
   onBackToSearch,
   hasActiveStudent,
+  isFromLeaderboard = false,
   onShowToast,
   currentView = 'report',
   onViewChange
@@ -79,7 +80,7 @@ export default function TopNavbar({
             type="button"
             className="btn btn-secondary btn-icon nav-back-btn"
             onClick={onBackToSearch}
-            title="Back to Student Search"
+            title={isFromLeaderboard ? "Back to Filtered Leaderboard" : "Back to Student Search"}
           >
             <ArrowLeft size={18} />
           </button>

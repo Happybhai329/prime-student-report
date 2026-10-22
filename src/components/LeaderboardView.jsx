@@ -26,18 +26,67 @@ import {
 import CalculationPreviewModal from './CalculationPreviewModal';
 
 export default function LeaderboardView({ onSelectStudent, onShowToast }) {
-  const [activeTab, setActiveTab] = useState('students'); // 'students' | 'batches' | 'subjects'
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return sessionStorage.getItem('tpc_lb_tab') || 'students';
+    } catch {
+      return 'students';
+    }
+  }); // 'students' | 'batches' | 'subjects'
   const [loading, setLoading] = useState(true);
   const [leaderboardData, setLeaderboardData] = useState(null);
   const [filtersMeta, setFiltersMeta] = useState({ batches: [], subjects: [], examTypes: [] });
 
-  // Filter states
-  const [selectedBatch, setSelectedBatch] = useState('ALL');
-  const [selectedSubject, setSelectedSubject] = useState('ALL');
-  const [dateRange, setDateRange] = useState('all'); // 'all' | '30d' | '90d' | 'custom'
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Filter states (persisted in sessionStorage)
+  const [selectedBatch, setSelectedBatch] = useState(() => {
+    try {
+      return sessionStorage.getItem('tpc_lb_batch') || 'ALL';
+    } catch {
+      return 'ALL';
+    }
+  });
+  const [selectedSubject, setSelectedSubject] = useState(() => {
+    try {
+      return sessionStorage.getItem('tpc_lb_subject') || 'ALL';
+    } catch {
+      return 'ALL';
+    }
+  });
+  const [startDate, setStartDate] = useState(() => {
+    try {
+      return sessionStorage.getItem('tpc_lb_start_date') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [endDate, setEndDate] = useState(() => {
+    try {
+      return sessionStorage.getItem('tpc_lb_end_date') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [searchQuery, setSearchQuery] = useState(() => {
+    try {
+      return sessionStorage.getItem('tpc_lb_search') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  // Sync filters to sessionStorage whenever they change
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('tpc_lb_tab', activeTab);
+      sessionStorage.setItem('tpc_lb_batch', selectedBatch);
+      sessionStorage.setItem('tpc_lb_subject', selectedSubject);
+      sessionStorage.setItem('tpc_lb_start_date', startDate);
+      sessionStorage.setItem('tpc_lb_end_date', endDate);
+      sessionStorage.setItem('tpc_lb_search', searchQuery);
+    } catch {
+      // ignore
+    }
+  }, [activeTab, selectedBatch, selectedSubject, startDate, endDate, searchQuery]);
 
   // Threshold controls for Batch tab
   const [thresholdAtt, setThresholdAtt] = useState(75);
@@ -97,6 +146,15 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
     setStartDate('');
     setEndDate('');
     setSearchQuery('');
+    try {
+      sessionStorage.removeItem('tpc_lb_batch');
+      sessionStorage.removeItem('tpc_lb_subject');
+      sessionStorage.removeItem('tpc_lb_start_date');
+      sessionStorage.removeItem('tpc_lb_end_date');
+      sessionStorage.removeItem('tpc_lb_search');
+    } catch {
+      // ignore
+    }
   };
 
   const handleOpenStudentReport = (student) => {

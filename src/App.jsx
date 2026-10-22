@@ -99,6 +99,23 @@ export default function App() {
     setCurrentView('report');
   };
 
+  const handleBackToLeaderboard = () => {
+    setSelectedStudent(null);
+    setLeaderboardContext(null);
+    setReportData(null);
+    setStartDate('');
+    setEndDate('');
+    setCurrentView('leaderboard');
+  };
+
+  const handleBackNavigation = () => {
+    if (leaderboardContext) {
+      handleBackToLeaderboard();
+    } else {
+      handleBackToSearch();
+    }
+  };
+
   const handleSelectStudentFromLeaderboard = (student, context = null) => {
     const studentObj = {
       studentId: student.studentId || student.id,
@@ -125,8 +142,9 @@ export default function App() {
       <TopNavbar
         teacher={teacher}
         onLogout={handleLogout}
-        onBackToSearch={handleBackToSearch}
+        onBackToSearch={handleBackNavigation}
         hasActiveStudent={Boolean(selectedStudent)}
+        isFromLeaderboard={Boolean(leaderboardContext)}
         onShowToast={showToast}
         currentView={currentView}
         onViewChange={setCurrentView}
@@ -134,31 +152,37 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="app-body">
-        {currentView === 'leaderboard' ? (
+        {/* Persistent Leaderboard DOM to preserve filters, search query, scroll position, and data */}
+        <div style={{ display: currentView === 'leaderboard' ? 'block' : 'none' }}>
           <LeaderboardView
             onSelectStudent={handleSelectStudentFromLeaderboard}
             onShowToast={showToast}
           />
-        ) : !selectedStudent ? (
-          <StudentSearch
-            onSelectStudent={handleSelectStudent}
-            onShowToast={showToast}
-          />
-        ) : loadingReport && !reportData ? (
-          <div style={{ textAlign: 'center', padding: '80px 24px', color: 'var(--text-muted)' }}>
-            <div className="spinner spinner-dark" style={{ margin: '0 auto 16px', width: '32px', height: '32px' }} />
-            <h3 style={{ fontSize: '18px', fontWeight: 600 }}>Loading Comprehensive Report...</h3>
-            <p style={{ fontSize: '13px', marginTop: '4px' }}>Calculating attendance, exam rankings, and homework stats</p>
-          </div>
-        ) : (
-          <ReportView
-            reportData={reportData}
-            teacher={teacher}
-            onDateFilterChange={handleDateFilterChange}
-            onShowToast={showToast}
-            onRefreshReport={() => fetchReport(selectedStudent.studentId, startDate, endDate)}
-            leaderboardContext={leaderboardContext}
-          />
+        </div>
+
+        {currentView === 'report' && (
+          !selectedStudent ? (
+            <StudentSearch
+              onSelectStudent={handleSelectStudent}
+              onShowToast={showToast}
+            />
+          ) : loadingReport && !reportData ? (
+            <div style={{ textAlign: 'center', padding: '80px 24px', color: 'var(--text-muted)' }}>
+              <div className="spinner spinner-dark" style={{ margin: '0 auto 16px', width: '32px', height: '32px' }} />
+              <h3 style={{ fontSize: '18px', fontWeight: 600 }}>Loading Comprehensive Report...</h3>
+              <p style={{ fontSize: '13px', marginTop: '4px' }}>Calculating attendance, exam rankings, and homework stats</p>
+            </div>
+          ) : (
+            <ReportView
+              reportData={reportData}
+              teacher={teacher}
+              onDateFilterChange={handleDateFilterChange}
+              onShowToast={showToast}
+              onRefreshReport={() => fetchReport(selectedStudent.studentId, startDate, endDate)}
+              leaderboardContext={leaderboardContext}
+              onBackToLeaderboard={handleBackToLeaderboard}
+            />
+          )
         )}
       </main>
 
