@@ -7,6 +7,7 @@ import {
   fetchRemoteHomework,
   fetchRemoteExamResults,
   fetchRemoteComplaints,
+  fetchRemoteExamMapping,
   appendRemoteComplaint
 } from './googleSheets.js';
 
@@ -50,7 +51,8 @@ export async function runFullInboundSync() {
       attendance,
       homework,
       examResults,
-      complaints
+      complaints,
+      examMapping
     ] = await Promise.all([
       fetchRemoteEmployees().catch(err => { console.error('Error fetching employees:', err.message); return []; }),
       fetchRemoteStudents().catch(err => { console.error('Error fetching students:', err.message); return []; }),
@@ -58,10 +60,11 @@ export async function runFullInboundSync() {
       fetchRemoteAttendance().catch(err => { console.error('Error fetching attendance:', err.message); return []; }),
       fetchRemoteHomework().catch(err => { console.error('Error fetching homework:', err.message); return []; }),
       fetchRemoteExamResults().catch(err => { console.error('Error fetching exam results:', err.message); return []; }),
-      fetchRemoteComplaints().catch(err => { console.error('Error fetching complaints:', err.message); return []; })
+      fetchRemoteComplaints().catch(err => { console.error('Error fetching complaints:', err.message); return []; }),
+      fetchRemoteExamMapping().catch(err => { console.error('Error fetching exam mapping:', err.message); return []; })
     ]);
 
-    console.log(`[SyncEngine] Fetched from Sheets: ${employees.length} employees, ${students.length} students, ${batches.length} batches, ${attendance.length} attendance, ${homework.length} homework, ${examResults.length} results, ${complaints.length} complaints.`);
+    console.log(`[SyncEngine] Fetched from Sheets: ${employees.length} employees, ${students.length} students, ${batches.length} batches, ${attendance.length} attendance, ${homework.length} homework, ${examResults.length} results, ${complaints.length} complaints, ${examMapping.length} exam mappings.`);
 
     // 2. Fast Batch Upsert Employees
     console.log(`[SyncEngine] Ingesting ${employees.length} employees...`);
@@ -253,6 +256,23 @@ export async function runFullInboundSync() {
       );
     }
 
+    // 9. Fast Batch Ingest Exam Mapping
+    if (examMapping && examMapping.length > 0) {
+      console.log(`[SyncEngine] Ingesting ${examMapping.length} exam mapping rules...`);
+      await query('DELETE FROM exam_mapping');
+      await batchInsert(
+        'exam_mapping',
+        ['exam_type', 'subject_name', 'subject_max_marks', 'exam_total_max_marks'],
+        examMapping.map(m => ({
+          exam_type: m.examType,
+          subject_name: m.subjectName,
+          subject_max_marks: m.subjectMaxMarks,
+          exam_total_max_marks: m.examTotalMaxMarks
+        })),
+        100
+      );
+    }
+
     lastSyncTime = new Date().toISOString();
     lastSyncCounts = {
       employees: employees.length,
@@ -262,6 +282,7 @@ export async function runFullInboundSync() {
       homework: homework.length,
       examResults: examResults.length,
       complaints: complaints.length,
+      examMappings: examMapping ? examMapping.length : 0,
       durationMs: Date.now() - startTime
     };
 

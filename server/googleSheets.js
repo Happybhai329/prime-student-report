@@ -347,3 +347,23 @@ export async function appendRemoteComplaint(complaint) {
 
   return { success: true };
 }
+
+/**
+ * 8. Fetch Remote Exam Mapping (Defines subjects and max marks per Exam Type)
+ */
+export async function fetchRemoteExamMapping() {
+  const records = await getSheetRecords(ACADEMIC_SPREADSHEET_ID, 'Exam_Mapping');
+  return records.map(r => {
+    const examType = getValue(r, ['examtype', 'exam_type']);
+    const subjectName = getValue(r, ['subject', 'subjectname', 'subject_name']);
+    const subMax = parseFloat(cleanText(getValue(r, ['subjectmaxmarks', 'subject_max_marks', 'subjecttotalmarks'])).replace(/,/g, '')) || 0;
+    const examMax = parseFloat(cleanText(getValue(r, ['examtotalmaxmarks', 'exam_total_max_marks', 'exammaxmarks', 'totalmaxmarks'])).replace(/,/g, '')) || 0;
+
+    return {
+      examType,
+      subjectName,
+      subjectMaxMarks: subMax,
+      examTotalMaxMarks: examMax
+    };
+  }).filter(m => Boolean(m.examType) && Boolean(m.subjectName));
+}

@@ -374,6 +374,18 @@ async function createTables() {
     );
   `);
 
+  // 12. Exam Mapping table
+  await query(`
+    CREATE TABLE IF NOT EXISTS exam_mapping (
+      id ${idColDef},
+      exam_type TEXT NOT NULL,
+      subject_name TEXT NOT NULL,
+      subject_max_marks NUMERIC DEFAULT 0,
+      exam_total_max_marks NUMERIC DEFAULT 0,
+      last_synced ${tsColDef}
+    );
+  `);
+
   // Indexes on students
   await query(`CREATE INDEX IF NOT EXISTS idx_students_id ON students(student_id);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_students_name ON students(student_name);`);
@@ -426,6 +438,9 @@ async function createTables() {
   await query(`CREATE INDEX IF NOT EXISTS idx_complaints_student_id ON complaints(student_id);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_complaints_batch_id ON complaints(batch_id);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_prime_employees_id ON prime_employees(employee_id);`);
+
+  // Indexes on exam_mapping
+  await query(`CREATE INDEX IF NOT EXISTS idx_exam_mapping_exam_type ON exam_mapping(exam_type);`);
 
   console.log('Database schema ready.');
 }

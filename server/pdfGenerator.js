@@ -260,12 +260,30 @@ export function generateStudentReportPDF(reportBundle, teacher = {}, options = {
     : `3. Subject-Wise Strength & Weakness Analysis (${selectedExamType})`;
   addSectionHeader(subjectSectionTitle);
 
-  let activeSubjectWise = results.subjectWise || [];
+  const offeredSubjects = (profile.batchContext?.subjectsOffered || []).map(s => String(s || '').toUpperCase().trim());
+  const isAllowedInBatchPDF = (sName) => {
+    if (!offeredSubjects.length) return true;
+    const cleanSub = String(sName || '').toUpperCase().trim();
+    let base = cleanSub;
+    if (cleanSub.includes('HINDI') && cleanSub.includes('READING')) base = 'READING';
+    else if (cleanSub.includes('READING')) base = 'READING';
+    else if (cleanSub.includes('HINDI')) base = 'HINDI';
+    else if (cleanSub.includes('ENGLISH')) base = 'ENGLISH';
+    else if (cleanSub.includes('MATH')) base = 'MATHEMATICS';
+    else if (cleanSub.includes('REASON')) base = 'REASONING';
+    else if (cleanSub.includes('SCIENCE')) base = 'SCIENCE';
+    else if (cleanSub.includes('SOCIAL') || cleanSub.includes('SST')) base = 'SOCIAL STUDIES';
+    else if (cleanSub.includes('GENERAL') || cleanSub.includes('GK')) base = 'GENERAL KNOWLEDGE';
+
+    return offeredSubjects.some(o => o.includes(base) || base.includes(o));
+  };
+
+  let activeSubjectWise = (results.subjectWise || []).filter(s => isAllowedInBatchPDF(s.subjectName));
   if (selectedExamType !== 'ALL') {
     const subMap = {};
     targetExamRows.forEach(test => {
       (test.subjects || []).forEach(s => {
-        if (!s.subjectName) return;
+        if (!s.subjectName || !isAllowedInBatchPDF(s.subjectName)) return;
         if (!subMap[s.subjectName]) {
           subMap[s.subjectName] = { obtained: 0, maxMarks: 0, count: 0 };
         }

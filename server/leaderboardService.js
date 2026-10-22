@@ -1,4 +1,5 @@
 import { query } from './db.js';
+import { getExamMappingLookup, filterAndRecalculateExamResults, isSubjectAllowedInBatch } from './subjectFilter.js';
 
 // In-memory cache with 60s TTL
 const leaderboardCache = new Map();
@@ -373,11 +374,25 @@ export async function getLeaderboardData({
   }
   subjSql += ` GROUP BY subject_name, batch_name ORDER BY subject_name, avg_pct DESC`;
 
+  const batchRows = await query('SELECT batch_name, subjects_offered FROM batches');
+  const batchSubjectsMap = new Map();
+  batchRows.rows.forEach(b => {
+    let subs = [];
+    try { subs = JSON.parse(b.subjects_offered || '[]'); } catch { subs = (b.subjects_offered || '').split(','); }
+    batchSubjectsMap.set((b.batch_name || '').trim().toLowerCase(), subs.map(s => s.trim()).filter(Boolean));
+  });
+
   const subjRes = await query(subjSql, subjParams);
   const subjGroupMap = new Map();
 
   subjRes.rows.forEach(r => {
     const sName = r.subject_name;
+    const bName = (r.batch_name || 'General').trim();
+    const bSubs = batchSubjectsMap.get(bName.toLowerCase());
+    if (bSubs && bSubs.length > 0 && !isSubjectAllowedInBatch(sName, bSubs)) {
+      return; // Skip subject not taught/tested in this batch
+    }
+
     if (!subjGroupMap.has(sName)) {
       subjGroupMap.set(sName, {
         subject: sName,
@@ -385,7 +400,7 @@ export async function getLeaderboardData({
       });
     }
     subjGroupMap.get(sName).batches.push({
-      batch: r.batch_name || 'General',
+      batch: bName,
       avgPct: Number(r.avg_pct) || 0,
       avgObtained: Number(r.avg_obtained) || 0,
       avgMax: Number(r.avg_max) || 0,
@@ -587,84 +602,50 @@ export async function getStudentCalculations(studentId, { startDate = '', endDat
 
   const examRes = await query(examSql, examParams);
 
-  // Group by test_id
-  const testMap = new Map();
-  const subjectMap = new Map();
-
-  examRes.rows.forEach(r => {
-    const tId = r.test_id || r.exam_date || 'Unknown';
-    if (!testMap.has(tId)) {
-      testMap.set(tId, {
-        testId: tId,
-        examDate: r.exam_date || '-',
-        examType: r.exam_type || 'General',
-        rank: r.rank || null,
-        totalObtained: Number(r.total_obtained_marks) || 0,
-        totalMax: Number(r.exam_total_max_marks) || 0,
-        percentage: r.exam_total_max_marks > 0 ? round((r.total_obtained_marks / r.exam_total_max_marks) * 100, 1) : 0,
-        subjects: []
-      });
+  const batchRes = student.batch
+    ? await query('SELECT subjects_offered FROM batches WHERE LOWER(TRIM(batch_name)) = LOWER(TRIM($1))', [student.batch])
+    : { rows: [] };
+  let batchSubs = [];
+  if (batchRes.rows.length) {
+    try {
+      batchSubs = JSON.parse(batchRes.rows[0].subjects_offered || '[]');
+    } catch {
+      batchSubs = (batchRes.rows[0].subjects_offered || '').split(',').map(s => s.trim()).filter(Boolean);
     }
+  }
 
-    if (r.subject_name) {
-      const rawObt = Number(r.subject_obtained_marks) || 0;
-      let rawMax = Number(r.subject_max_marks) || 0;
-      if (rawMax <= 0 || rawObt > rawMax) {
-        if (rawObt > 150) rawMax = 200;
-        else if (rawObt > 100) rawMax = 150;
-        else if (rawObt > 50) rawMax = 100;
-        else if (rawObt > 30) rawMax = 50;
-        else if (rawObt > 20) rawMax = 30;
-        else if (rawMax <= 0) rawMax = 50;
-        else rawMax = Math.ceil(rawObt / 10) * 10;
-      }
-      const subObt = rawObt;
-      const subMax = rawMax;
-      testMap.get(tId).subjects.push({
-        subjectName: r.subject_name,
-        obtained: subObt,
-        maxMarks: subMax,
-        percentage: subMax > 0 ? Math.min(100, Math.max(0, round((subObt / subMax) * 100, 1))) : 0
-      });
+  const examMapping = await getExamMappingLookup();
 
-      if (!subjectMap.has(r.subject_name)) {
-        subjectMap.set(r.subject_name, {
-          subjectName: r.subject_name,
-          sumObtained: 0,
-          sumMax: 0,
-          count: 0
-        });
-      }
-      const sEntry = subjectMap.get(r.subject_name);
-      sEntry.sumObtained += subObt;
-      sEntry.sumMax += subMax;
-      sEntry.count += 1;
-    }
+  const {
+    testRows: testList,
+    subjectWise: calculatedSubjectWise
+  } = filterAndRecalculateExamResults({
+    rawRows: examRes.rows,
+    batchSubjects: batchSubs,
+    examMapping
   });
 
-  const testList = Array.from(testMap.values());
   const testCount = testList.length;
   const examPercentages = testList.map(t => t.percentage);
   const avgResultPct = testCount > 0 ? round(examPercentages.reduce((a, b) => a + b, 0) / testCount, 1) : 0;
   const resultWeightedPoints = round(avgResultPct * 0.40, 2);
 
   // Subject Wise Summary
-  const subjectBreakdown = Array.from(subjectMap.values()).map(s => {
-    const pct = s.sumMax > 0 ? round((s.sumObtained / s.sumMax) * 100, 1) : 0;
+  const subjectBreakdown = calculatedSubjectWise.map(s => {
     let tag = 'Average';
-    if (pct >= 80) tag = 'Dominant / Strong';
-    else if (pct >= 65) tag = 'Good';
-    else if (pct < 50) tag = 'Needs Focus / Weak';
+    if (s.percentage >= 80) tag = 'Dominant / Strong';
+    else if (s.percentage >= 65) tag = 'Good';
+    else if (s.percentage < 50) tag = 'Needs Focus / Weak';
 
     return {
       subject: s.subjectName,
-      avgObtained: round(s.sumObtained / s.count, 1),
-      avgMax: round(s.sumMax / s.count, 1),
-      avgPercentage: pct,
-      testCount: s.count,
+      avgObtained: s.averageObtainedMarks,
+      avgMax: s.averageMaxMarks,
+      avgPercentage: s.percentage,
+      testCount: s.count || 0,
       status: tag
     };
-  }).sort((a, b) => b.avgPercentage - a.avgPercentage);
+  });
 
   const strongestSubject = subjectBreakdown.length > 0 ? subjectBreakdown[0] : null;
   const weakestSubject = subjectBreakdown.length > 0 ? subjectBreakdown[subjectBreakdown.length - 1] : null;

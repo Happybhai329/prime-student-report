@@ -134,13 +134,31 @@ export default function ReportView({
 
   // Dynamic Subject-Wise stats filtered by exam type
   const filteredSubjectWise = useMemo(() => {
+    const offered = (profile?.batchContext?.subjectsOffered || []).map(s => String(s || '').toUpperCase().trim());
+    const isAllowedInBatch = (sName) => {
+      if (!offered.length) return true;
+      const cleanSub = String(sName || '').toUpperCase().trim();
+      let base = cleanSub;
+      if (cleanSub.includes('HINDI') && cleanSub.includes('READING')) base = 'READING';
+      else if (cleanSub.includes('READING')) base = 'READING';
+      else if (cleanSub.includes('HINDI')) base = 'HINDI';
+      else if (cleanSub.includes('ENGLISH')) base = 'ENGLISH';
+      else if (cleanSub.includes('MATH')) base = 'MATHEMATICS';
+      else if (cleanSub.includes('REASON')) base = 'REASONING';
+      else if (cleanSub.includes('SCIENCE')) base = 'SCIENCE';
+      else if (cleanSub.includes('SOCIAL') || cleanSub.includes('SST')) base = 'SOCIAL STUDIES';
+      else if (cleanSub.includes('GENERAL') || cleanSub.includes('GK')) base = 'GENERAL KNOWLEDGE';
+
+      return offered.some(o => o.includes(base) || base.includes(o));
+    };
+
     if (selectedExamType === 'ALL') {
-      return results?.subjectWise || [];
+      return (results?.subjectWise || []).filter(s => isAllowedInBatch(s.subjectName));
     }
     const subMap = {};
     filteredExamRows.forEach(test => {
       (test.subjects || []).forEach(s => {
-        if (!s.subjectName) return;
+        if (!s.subjectName || !isAllowedInBatch(s.subjectName)) return;
         const rawObt = Number(s.subjectObtainedMarks) || 0;
         let rawMax = Number(s.subjectMaxMarks) || 0;
         if (rawMax <= 0 || rawObt > rawMax) {

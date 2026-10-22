@@ -11,6 +11,7 @@ import { runFullInboundSync, startPeriodicSync, getSyncStatus, submitStudentComp
 import { getFiltersMeta, getLeaderboardData, getStudentCalculations, invalidateLeaderboardCache } from './leaderboardService.js';
 import { generateStudentReportPDF } from './pdfGenerator.js';
 import { fetchRemoteEmployees } from './googleSheets.js';
+import { getExamMappingLookup, filterAndRecalculateExamResults } from './subjectFilter.js';
 
 dotenv.config();
 
@@ -423,80 +424,16 @@ app.get('/api/students/:id/report', async (req, res) => {
     // 5. Exam Results Processing
     const filteredExams = examRes.rows.filter(r => isDateInRange(r.exam_date, startKey, endKey));
 
-    const testsByKey = {};
-    const subjectMap = {};
+    const examMapping = await getExamMappingLookup();
+    const batchSubjects = batchContext ? batchContext.subjectsOffered : [];
 
-    filteredExams.forEach(r => {
-      const testKey = [r.test_id, r.exam_date, r.exam_type, r.batch_name].map(s => cleanText(s)).join('::');
-      const subject = r.subject_name || 'Unknown Subject';
-      const rawObt = Number(r.subject_obtained_marks) || 0;
-      let rawMax = Number(r.subject_max_marks) || 0;
-      if (rawMax <= 0 || rawObt > rawMax) {
-        if (rawObt > 150) rawMax = 200;
-        else if (rawObt > 100) rawMax = 150;
-        else if (rawObt > 50) rawMax = 100;
-        else if (rawObt > 30) rawMax = 50;
-        else if (rawObt > 20) rawMax = 30;
-        else if (rawMax <= 0) rawMax = 50;
-        else rawMax = Math.ceil(rawObt / 10) * 10;
-      }
-      const obtained = rawObt;
-      const maxMarks = rawMax;
-      const totalObtained = Number(r.total_obtained_marks) || 0;
-      const totalMax = Number(r.exam_total_max_marks) || 0;
-      const rank = Number(r.rank) || null;
-
-      if (!testsByKey[testKey]) {
-        testsByKey[testKey] = {
-          testId: r.test_id || testKey,
-          examDate: r.exam_date || '-',
-          examType: r.exam_type || '-',
-          batchName: r.batch_name || '-',
-          totalObtained,
-          totalMax,
-          rank,
-          subjects: []
-        };
-      }
-
-      if (!testsByKey[testKey].totalObtained && totalObtained) testsByKey[testKey].totalObtained = totalObtained;
-      if (!testsByKey[testKey].totalMax && totalMax) testsByKey[testKey].totalMax = totalMax;
-      if (!testsByKey[testKey].rank && rank) testsByKey[testKey].rank = rank;
-
-      testsByKey[testKey].subjects.push({
-        subjectName: subject,
-        subjectObtainedMarks: obtained,
-        subjectMaxMarks: maxMarks
-      });
-
-      if (!subjectMap[subject]) {
-        subjectMap[subject] = { obtained: 0, maxMarks: 0, count: 0, pcts: [] };
-      }
-      subjectMap[subject].obtained += obtained;
-      subjectMap[subject].maxMarks += maxMarks;
-      subjectMap[subject].count += 1;
-      const testSubPct = maxMarks > 0 ? Math.min(100, Math.max(0, (obtained / maxMarks) * 100)) : 0;
-      subjectMap[subject].pcts.push(testSubPct);
-    });
-
-    const testRows = Object.values(testsByKey).map(test => {
-      const totalObtained = Number(test.totalObtained) || 0;
-      const totalMax = Number(test.totalMax) || 0;
-      const validPercentage = (totalMax > 0 && totalObtained <= totalMax)
-        ? round((totalObtained / totalMax) * 100, 1)
-        : (totalMax > 0 ? 100 : 0);
-
-      return {
-        testId: test.testId,
-        examDate: test.examDate,
-        examType: (test.examType || '-').trim(),
-        batchName: test.batchName,
-        totalObtainedMarks: totalObtained,
-        examTotalMaxMarks: totalMax,
-        percentage: validPercentage,
-        rank: test.rank,
-        subjects: test.subjects
-      };
+    const {
+      testRows,
+      subjectWise
+    } = filterAndRecalculateExamResults({
+      rawRows: filteredExams,
+      batchSubjects,
+      examMapping
     });
 
     testRows.sort((a, b) => parseDateKey(a.examDate) - parseDateKey(b.examDate));
@@ -541,25 +478,6 @@ app.get('/api/students/:id/report', async (req, res) => {
       highestScore: 0,
       lowestScore: 0
     };
-
-    const subjectWise = Object.keys(subjectMap).map(subName => {
-      const stats = subjectMap[subName];
-      const avgPct = stats.pcts && stats.pcts.length
-        ? round(stats.pcts.reduce((a, b) => a + b, 0) / stats.pcts.length, 1)
-        : (stats.maxMarks ? round(Math.min(100, (stats.obtained / stats.maxMarks) * 100), 1) : 0);
-      const percentage = Math.min(100, Math.max(0, avgPct));
-      let status = 'Average';
-      if (percentage >= 80) status = 'Strong';
-      else if (percentage < 50) status = 'Weak';
-
-      return {
-        subjectName: subName,
-        averageObtainedMarks: round(stats.obtained / stats.count, 1),
-        averageMaxMarks: round(stats.maxMarks / stats.count, 1),
-        percentage,
-        status
-      };
-    });
 
     const trend = testRows.map(r => ({
       label: r.examDate !== '-' ? r.examDate : r.testId,
