@@ -109,14 +109,6 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
     setCurrentPage(1);
   }, [selectedBatch, selectedSubject, startDate, endDate, searchQuery]);
 
-  const totalPages = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(studentsList.length / Number(pageSize)));
-  const paginatedStudents = useMemo(() => {
-    if (pageSize === 'ALL') return studentsList;
-    const size = Number(pageSize) || 50;
-    const start = (currentPage - 1) * size;
-    return studentsList.slice(start, start + size);
-  }, [studentsList, currentPage, pageSize]);
-
   // 1. Fetch metadata on mount
   useEffect(() => {
     fetch('/api/filters/meta')
@@ -204,6 +196,14 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
   const batchList = leaderboardData?.batchRankings || [];
   const subjectList = leaderboardData?.subjectPerformance || [];
   const highlights = leaderboardData?.highlights || {};
+
+  const totalPages = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(studentsList.length / Number(pageSize)));
+  const paginatedStudents = useMemo(() => {
+    if (pageSize === 'ALL') return studentsList;
+    const size = Number(pageSize) || 50;
+    const start = (currentPage - 1) * size;
+    return studentsList.slice(start, start + size);
+  }, [studentsList, currentPage, pageSize]);
 
   // Top 3 Podium
   const topThree = useMemo(() => {
