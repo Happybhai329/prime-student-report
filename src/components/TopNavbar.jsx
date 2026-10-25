@@ -174,33 +174,6 @@ export default function TopNavbar({
           <LogOut size={18} color="var(--danger)" />
         </button>
       </div>
-
-      {/* Mobile Fixed Bottom Navigation Bar (< 768px) */}
-      <nav className="mobile-bottom-nav" aria-label="Mobile Quick Navigation">
-        <button
-          type="button"
-          className={`mobile-nav-item ${currentView === 'report' ? 'active' : ''}`}
-          onClick={() => onViewChange?.('report')}
-        >
-          <div className="mobile-nav-icon-wrap">
-            <FileText size={20} />
-            {hasActiveStudent && <span className="mobile-nav-dot" title="Active student loaded" />}
-          </div>
-          <span className="mobile-nav-label">Student Report</span>
-        </button>
-
-        <button
-          type="button"
-          className={`mobile-nav-item ${currentView === 'leaderboard' ? 'active' : ''}`}
-          onClick={() => onViewChange?.('leaderboard')}
-        >
-          <div className="mobile-nav-icon-wrap">
-            <Trophy size={20} />
-            <span className="mobile-nav-live-pill">Live</span>
-          </div>
-          <span className="mobile-nav-label">Leaderboard</span>
-        </button>
-      </nav>
-    </header>
+</header>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { FileText, Trophy } from 'lucide-react';
 import TopNavbar from './components/TopNavbar';
 import LoginView from './components/LoginView';
 import StudentSearch from './components/StudentSearch';
@@ -194,6 +195,33 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      {/* Mobile Fixed Bottom Navigation Bar (< 768px) */}
+      <nav className="mobile-bottom-nav" aria-label="Mobile Navigation">
+        <button
+          type="button"
+          className={`mobile-nav-item ${currentView === 'report' ? 'active' : ''}`}
+          onClick={() => setCurrentView('report')}
+        >
+          <div className="mobile-nav-icon-wrap">
+            <FileText size={20} />
+            {Boolean(selectedStudent) && <span className="mobile-nav-dot" title="Active student loaded" />}
+          </div>
+          <span className="mobile-nav-label">Student Report</span>
+        </button>
+
+        <button
+          type="button"
+          className={`mobile-nav-item ${currentView === 'leaderboard' ? 'active' : ''}`}
+          onClick={() => setCurrentView('leaderboard')}
+        >
+          <div className="mobile-nav-icon-wrap">
+            <Trophy size={20} />
+            <span className="mobile-nav-live-pill">Live</span>
+          </div>
+          <span className="mobile-nav-label">Leaderboard</span>
+        </button>
+      </nav>
     </div>
   );
 }

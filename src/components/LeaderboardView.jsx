@@ -729,7 +729,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           {/* TAB 1: STUDENT RANKINGS */}
           {activeTab === 'students' && (
             <div className="glass" style={{ borderRadius: '20px', overflow: 'hidden' }}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--stroke)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="rankings-header-bar">
                 <div>
                   <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
                     Student Rankings List
@@ -751,7 +751,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                 </div>
               ) : (
                 <>
-                  <div className="table-responsive-touch">
+                  <div className="leaderboard-desktop-table table-responsive-touch">
                     <table className="results-table" style={{ fontSize: '13px', width: '100%' }}>
                     <thead>
                       <tr>
@@ -899,6 +899,97 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                     </tbody>
                   </table>
                 </div>
+
+                  {/* Dedicated Native Mobile Cards (< 768px) */}
+                  <div className="leaderboard-mobile-cards">
+                    {paginatedStudents.map((s) => {
+                      const isGold = s.rank === 1;
+                      const isSilver = s.rank === 2;
+                      const isBronze = s.rank === 3;
+
+                      return (
+                        <div
+                          key={s.studentId}
+                          className={`mobile-rank-card ${isGold ? 'rank-gold' : isSilver ? 'rank-silver' : isBronze ? 'rank-bronze' : ''}`}
+                        >
+                          <div className="mobile-card-top">
+                            <div className="mobile-card-rank">
+                              {isGold ? (
+                                <span className="badge-rank gold">
+                                  <Trophy size={13} /> #1
+                                </span>
+                              ) : isSilver ? (
+                                <span className="badge-rank silver">
+                                  <Medal size={13} /> #2
+                                </span>
+                              ) : isBronze ? (
+                                <span className="badge-rank bronze">
+                                  <Award size={13} /> #3
+                                </span>
+                              ) : (
+                                <span className="badge-rank standard">
+                                  #{s.rank}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="mobile-card-identity">
+                              <h4 className="mobile-card-name">{s.studentName}</h4>
+                              <div className="mobile-card-meta">
+                                <span className="student-id-code">ID: {s.studentId}</span>
+                                <span className="meta-bullet">&bull;</span>
+                                <span className="batch-pill">{s.batch}</span>
+                              </div>
+                            </div>
+
+                            <div className="mobile-card-score">
+                              <span className="score-number">{s.overallScore}</span>
+                              <span className="score-pts">pts</span>
+                            </div>
+                          </div>
+
+                          <div className="mobile-card-metrics">
+                            <div className="metric-pill att">
+                              <span className="metric-pill-label">Attendance</span>
+                              <div className="metric-pill-val">{s.attendance.percentage}%</div>
+                              <div className="metric-pill-sub">{s.attendance.presentDays}/{s.attendance.totalDays}d</div>
+                            </div>
+
+                            <div className="metric-pill hw">
+                              <span className="metric-pill-label">Homework</span>
+                              <div className="metric-pill-val">{s.homework.score} <small>/10</small></div>
+                              <div className="metric-pill-sub">{s.homework.percentage}%</div>
+                            </div>
+
+                            <div className="metric-pill exam">
+                              <span className="metric-pill-label">Exam Avg</span>
+                              <div className="metric-pill-val">{s.result.percentage}%</div>
+                              <div className="metric-pill-sub">{s.result.testCount} tests</div>
+                            </div>
+                          </div>
+
+                          <div className="mobile-card-actions">
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm mobile-btn-audit"
+                              onClick={() => setCalcModalStudent(s)}
+                            >
+                              <Calculator size={14} />
+                              <span>Audit</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm mobile-btn-report"
+                              onClick={() => handleOpenStudentReport(s)}
+                            >
+                              <Eye size={14} />
+                              <span>Full Report</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
 
                 {/* Performance-Optimized Responsive Pagination Bar */}
                 {studentsList.length > 0 && (
