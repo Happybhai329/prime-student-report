@@ -503,91 +503,74 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
       )}
 
       {/* Control Bar: Tab Pills + Dynamic Filters */}
-      <div className="glass" style={{ borderRadius: '20px', padding: '20px 24px', marginBottom: '24px' }}>
+      <div className="glass leaderboard-filter-panel">
         {/* Navigation Switcher Pills */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid var(--stroke)', paddingBottom: '16px', marginBottom: '18px' }}>
+        <div className="leaderboard-tabs-bar">
           <button
             type="button"
             className={`tab-btn ${activeTab === 'students' ? 'active' : ''}`}
             onClick={() => setActiveTab('students')}
-            style={{
-              padding: '10px 18px',
-              borderRadius: '12px',
-              fontSize: '13px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              border: activeTab === 'students' ? '1.5px solid var(--tpc-purple)' : '1px solid var(--stroke)',
-              background: activeTab === 'students' ? 'var(--tpc-purple)' : 'white',
-              color: activeTab === 'students' ? 'white' : 'var(--text-muted)',
-              transition: 'all 0.2s ease'
-            }}
           >
-            <Trophy size={16} />
-            <span>Student Rankings ({studentsList.length})</span>
+            <Trophy size={15} />
+            <span>Students ({studentsList.length})</span>
           </button>
 
           <button
             type="button"
             className={`tab-btn ${activeTab === 'batches' ? 'active' : ''}`}
             onClick={() => setActiveTab('batches')}
-            style={{
-              padding: '10px 18px',
-              borderRadius: '12px',
-              fontSize: '13px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              border: activeTab === 'batches' ? '1.5px solid var(--tpc-purple)' : '1px solid var(--stroke)',
-              background: activeTab === 'batches' ? 'var(--tpc-purple)' : 'white',
-              color: activeTab === 'batches' ? 'white' : 'var(--text-muted)',
-              transition: 'all 0.2s ease'
-            }}
           >
-            <Layers size={16} />
-            <span>Batch Performance ({batchList.length})</span>
+            <Layers size={15} />
+            <span>Batches ({batchList.length})</span>
           </button>
 
           <button
             type="button"
             className={`tab-btn ${activeTab === 'subjects' ? 'active' : ''}`}
             onClick={() => setActiveTab('subjects')}
-            style={{
-              padding: '10px 18px',
-              borderRadius: '12px',
-              fontSize: '13px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              border: activeTab === 'subjects' ? '1.5px solid var(--tpc-purple)' : '1px solid var(--stroke)',
-              background: activeTab === 'subjects' ? 'var(--tpc-purple)' : 'white',
-              color: activeTab === 'subjects' ? 'white' : 'var(--text-muted)',
-              transition: 'all 0.2s ease'
-            }}
           >
-            <BookOpen size={16} />
-            <span>Subject Analysis ({subjectList.length})</span>
+            <BookOpen size={15} />
+            <span>Subjects ({subjectList.length})</span>
           </button>
         </div>
 
-        {/* Filters Row */}
-        <div className="leaderboard-filters-wrap">
-          {/* Batch Filter */}
-          <div className="leaderboard-filter-item" style={{ flex: '1 1 200px', minWidth: '180px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+        {/* Filters Grid */}
+        <div className="leaderboard-filters-grid">
+          {/* Quick Search */}
+          <div className="filter-item-search">
+            <label className="filter-item-label">
+              Search Leaderboard
+            </label>
+            <div style={{ position: 'relative' }}>
+              <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                placeholder="Search by student name or 10-digit ID..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="form-input filter-search-input"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px' }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Select Batch */}
+          <div className="filter-item-batch">
+            <label className="filter-item-label">
               Select Batch
             </label>
             <select
-              className="form-select"
+              className="form-select filter-select"
               value={selectedBatch}
               onChange={(e) => setSelectedBatch(e.target.value)}
-              style={{ width: '100%', fontSize: '13px', fontWeight: 600, padding: '8px 12px', borderRadius: '10px', border: '1px solid var(--stroke)' }}
             >
               <option value="ALL">All Batches ({filtersMeta.batches.length})</option>
               {filtersMeta.batches.map(b => (
@@ -597,15 +580,14 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
           </div>
 
           {/* Subject Filter */}
-          <div className="leaderboard-filter-item" style={{ flex: '1 1 180px', minWidth: '160px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+          <div className="filter-item-subject">
+            <label className="filter-item-label">
               Subject Filter
             </label>
             <select
-              className="form-select"
+              className="form-select filter-select"
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(e.target.value)}
-              style={{ width: '100%', fontSize: '13px', fontWeight: 600, padding: '8px 12px', borderRadius: '10px', border: '1px solid var(--stroke)' }}
             >
               <option value="ALL">All Subjects</option>
               {filtersMeta.subjects.map(s => (
@@ -614,11 +596,11 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
             </select>
           </div>
 
-          {/* Date Filter (From Date -> To Date) */}
-          <div className="leaderboard-filter-item" style={{ flex: '1 1 320px', minWidth: '280px' }}>
+          {/* Date Filter */}
+          <div className="filter-item-date">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-                Date Filter
+              <label className="filter-item-label">
+                Date Interval
               </label>
               {(startDate || endDate) && (
                 <button
@@ -630,87 +612,48 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                 </button>
               )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+
+            <div className="date-inputs-row">
               <button
                 type="button"
-                className={`btn btn-sm ${!startDate && !endDate ? 'btn-primary' : 'btn-secondary'}`}
+                className={`btn btn-sm ${!startDate && !endDate ? 'btn-primary' : 'btn-secondary'} date-alltime-toggle`}
                 onClick={() => { setStartDate(''); setEndDate(''); }}
-                style={{ fontSize: '11px', padding: '6px 12px', minHeight: '38px', height: '38px', whiteSpace: 'nowrap' }}
               >
                 All Time
               </button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+              <div className="date-pickers-pair">
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
+                  className="form-input date-picker-input"
                   title="Start Date"
                   aria-label="Start Date"
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    height: '38px',
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    border: startDate ? '1.5px solid var(--tpc-purple)' : '1px solid var(--stroke)',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: 'var(--text-main)',
-                    background: startDate ? 'rgba(124, 58, 237, 0.04)' : 'white'
-                  }}
                 />
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700 }}>to</span>
+                <span className="date-sep-label">to</span>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
+                  className="form-input date-picker-input"
                   title="End Date"
                   aria-label="End Date"
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    height: '38px',
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    border: endDate ? '1.5px solid var(--tpc-purple)' : '1px solid var(--stroke)',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: 'var(--text-main)',
-                    background: endDate ? 'rgba(124, 58, 237, 0.04)' : 'white'
-                  }}
                 />
               </div>
             </div>
           </div>
 
-          {/* Search Box */}
-          <div className="leaderboard-filter-item" style={{ flex: '2 1 240px', minWidth: '220px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-              Search in Leaderboard
-            </label>
-            <div style={{ position: 'relative' }}>
-              <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input
-                type="text"
-                placeholder="Filter by Student Name or ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px 8px 36px', borderRadius: '10px', border: '1px solid var(--stroke)', fontSize: '13px' }}
-              />
-            </div>
-          </div>
-
-          {/* Reset button */}
+          {/* Reset Filters Action */}
           {(selectedBatch !== 'ALL' || selectedSubject !== 'ALL' || startDate || endDate || searchQuery) && (
-            <div style={{ alignSelf: 'flex-end' }}>
+            <div className="filter-item-reset">
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
                 onClick={handleResetFilters}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '8px 12px' }}
+                style={{ width: '100%', height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '12px', fontWeight: 700 }}
               >
                 <RotateCcw size={14} />
-                <span>Reset</span>
+                <span>Reset All Filters</span>
               </button>
             </div>
           )}
