@@ -403,6 +403,8 @@ async function createTables() {
   await query(`CREATE INDEX IF NOT EXISTS idx_exam_results_exam_date ON exam_results(exam_date);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_exam_results_student_test ON exam_results(student_id, test_id);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_exam_results_student_date ON exam_results(student_id, exam_date);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_exam_results_subject_name ON exam_results(subject_name);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_exam_results_batch_date ON exam_results(batch_name, exam_date);`);
 
   // Indexes on test_results
   await query(`CREATE INDEX IF NOT EXISTS idx_test_results_student_id ON test_results(student_id);`);
@@ -433,6 +435,8 @@ async function createTables() {
   // Indexes on homework
   await query(`CREATE INDEX IF NOT EXISTS idx_homework_student_id ON homework(student_id);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_homework_student_date ON homework(student_id, date);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_homework_subject ON homework(subject);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_homework_date ON homework(date);`);
 
   // Indexes on complaints
   await query(`CREATE INDEX IF NOT EXISTS idx_complaints_student_id ON complaints(student_id);`);

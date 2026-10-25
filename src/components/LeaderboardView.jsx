@@ -10,7 +10,10 @@ import {
   BookOpen,
   UserCheck,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   TrendingUp,
   Sliders,
   RotateCcw,
@@ -96,6 +99,23 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
 
   // Calculation Modal State
   const [calcModalStudent, setCalcModalStudent] = useState(null);
+
+  // Pagination for performance (prevents rendering 600+ DOM rows at once)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50); // 25 | 50 | 100 | 'ALL'
+
+  // Reset page whenever any filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedBatch, selectedSubject, startDate, endDate, searchQuery]);
+
+  const totalPages = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(studentsList.length / Number(pageSize)));
+  const paginatedStudents = useMemo(() => {
+    if (pageSize === 'ALL') return studentsList;
+    const size = Number(pageSize) || 50;
+    const start = (currentPage - 1) * size;
+    return studentsList.slice(start, start + size);
+  }, [studentsList, currentPage, pageSize]);
 
   // 1. Fetch metadata on mount
   useEffect(() => {
@@ -730,12 +750,13 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                   <p style={{ fontSize: '13px' }}>Try selecting "All Batches" or clearing your search term.</p>
                 </div>
               ) : (
-                <div className="table-responsive-touch">
-                  <table className="results-table" style={{ fontSize: '13px', width: '100%' }}>
+                <>
+                  <div className="table-responsive-touch">
+                    <table className="results-table" style={{ fontSize: '13px', width: '100%' }}>
                     <thead>
                       <tr>
-                        <th style={{ width: '70px', textAlign: 'center' }}>Rank</th>
-                        <th>Student Name & ID</th>
+                        <th className="sticky-col-rank" style={{ width: '70px', textAlign: 'center' }}>Rank</th>
+                        <th className="sticky-col-name">Student Name & ID</th>
                         <th>Batch</th>
                         <th style={{ minWidth: '150px' }}>Attendance</th>
                         <th style={{ textAlign: 'center' }}>Homework</th>
@@ -745,7 +766,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {studentsList.map((s) => {
+                      {paginatedStudents.map((s) => {
                         const isGold = s.rank === 1;
                         const isSilver = s.rank === 2;
                         const isBronze = s.rank === 3;
@@ -753,12 +774,13 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                         return (
                           <tr
                             key={s.studentId}
+                            data-rank={s.rank <= 3 ? s.rank : undefined}
                             style={{
                               background: isGold ? 'rgba(254, 243, 199, 0.45)' : isSilver ? 'rgba(241, 245, 249, 0.55)' : isBronze ? 'rgba(254, 237, 213, 0.45)' : undefined
                             }}
                           >
                             {/* Rank Badge */}
-                            <td style={{ textAlign: 'center' }}>
+                            <td className="sticky-col-rank" style={{ textAlign: 'center' }}>
                               {isGold ? (
                                 <span style={{ background: '#f59e0b', color: 'white', borderRadius: '8px', padding: '4px 8px', fontWeight: 900, fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
                                   <Trophy size={12} /> #1
@@ -779,7 +801,7 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                             </td>
 
                             {/* Name & ID */}
-                            <td>
+                            <td className="sticky-col-name">
                               <div style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: '13px' }}>
                                 {s.studentName}
                               </div>
@@ -877,7 +899,84 @@ export default function LeaderboardView({ onSelectStudent, onShowToast }) {
                     </tbody>
                   </table>
                 </div>
-              )}
+
+                {/* Performance-Optimized Responsive Pagination Bar */}
+                {studentsList.length > 0 && (
+                  <div className="leaderboard-pagination-bar">
+                    <div className="pagination-info">
+                      Showing <strong>{pageSize === 'ALL' ? 1 : (currentPage - 1) * Number(pageSize) + 1}</strong> to{' '}
+                      <strong>{pageSize === 'ALL' ? studentsList.length : Math.min(currentPage * Number(pageSize), studentsList.length)}</strong> of{' '}
+                      <strong>{studentsList.length}</strong> students
+                    </div>
+
+                    <div className="pagination-controls-wrap">
+                      <div className="page-size-selector">
+                        <span>Per page:</span>
+                        <select
+                          className="form-select form-select-sm"
+                          value={pageSize}
+                          onChange={(e) => {
+                            setPageSize(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value));
+                            setCurrentPage(1);
+                          }}
+                        >
+                          <option value={25}>25</option>
+                          <option value={50}>50</option>
+                          <option value={100}>100</option>
+                          <option value="ALL">All ({studentsList.length})</option>
+                        </select>
+                      </div>
+
+                      {pageSize !== 'ALL' && totalPages > 1 && (
+                        <div className="pagination-buttons">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-secondary pagination-btn"
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(1)}
+                            title="First page"
+                          >
+                            <ChevronsLeft size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-secondary pagination-btn"
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            title="Previous page"
+                          >
+                            <ChevronLeft size={15} />
+                          </button>
+
+                          <span className="pagination-page-label">
+                            Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+                          </span>
+
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-secondary pagination-btn"
+                            disabled={currentPage === totalPages}
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            title="Next page"
+                          >
+                            <ChevronRight size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-secondary pagination-btn"
+                            disabled={currentPage === totalPages}
+                            onClick={() => setCurrentPage(totalPages)}
+                            title="Last page"
+                          >
+                            <ChevronsRight size={15} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
             </div>
           )}
 

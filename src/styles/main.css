@@ -2243,3 +2243,354 @@ tr:hover td {
     align-items: flex-start;
   }
 }
+
+
+/* ==========================================================================
+   MOBILE & PC ULTIMATE RESPONSIVENESS & PERFORMANCE ENHANCEMENTS
+   ========================================================================== */
+
+/* 1. Mobile Bottom Navigation Bar */
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .nav-center-switcher {
+    display: none !important;
+  }
+
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    padding: 6px 16px;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1.5px solid var(--stroke);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+    z-index: 100;
+    align-items: center;
+    justify-content: space-around;
+  }
+
+  .mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 6px 18px;
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    flex: 1;
+    max-width: 160px;
+  }
+
+  .mobile-nav-item.active {
+    color: var(--tpc-purple);
+    font-weight: 800;
+  }
+
+  .mobile-nav-item.active .mobile-nav-icon-wrap {
+    transform: translateY(-2px);
+    color: var(--tpc-purple);
+  }
+
+  .mobile-nav-icon-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease;
+  }
+
+  .mobile-nav-dot {
+    position: absolute;
+    top: -2px;
+    right: -4px;
+    width: 7px;
+    height: 7px;
+    background: var(--tpc-green);
+    border-radius: 50%;
+    border: 1.5px solid white;
+    box-shadow: 0 0 4px rgba(22, 163, 74, 0.6);
+  }
+
+  .mobile-nav-live-pill {
+    position: absolute;
+    top: -4px;
+    right: -16px;
+    font-size: 8.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    background: #10b981;
+    color: white;
+    padding: 1px 4px;
+    border-radius: 9999px;
+    line-height: 1;
+  }
+
+  .mobile-nav-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+  }
+
+  /* Ensure body content doesn't get covered by bottom nav */
+  .app-body {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+/* 2. Responsive Table Min-Width & Horizontal Scrolling Perfection */
+.table-wrap table {
+  min-width: 540px;
+}
+
+.results-table {
+  min-width: 780px;
+}
+
+.table-responsive-touch {
+  position: relative;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+/* Sticky Columns for Leaderboard Table */
+.sticky-col-rank {
+  position: sticky !important;
+  left: 0;
+  z-index: 2;
+  background: #ffffff;
+}
+
+.sticky-col-name {
+  position: sticky !important;
+  left: 70px;
+  z-index: 2;
+  background: #ffffff;
+  box-shadow: 4px 0 8px -2px rgba(0, 0, 0, 0.06);
+}
+
+th.sticky-col-rank {
+  z-index: 12 !important;
+  background: #f8fafc !important;
+}
+
+th.sticky-col-name {
+  z-index: 12 !important;
+  background: #f8fafc !important;
+  box-shadow: 4px 0 8px -2px rgba(0, 0, 0, 0.06);
+}
+
+tr:hover td.sticky-col-rank,
+tr:hover td.sticky-col-name {
+  background: #f8fafc !important;
+}
+
+tr[data-rank="1"] td.sticky-col-rank,
+tr[data-rank="1"] td.sticky-col-name {
+  background: #fef9c3 !important;
+}
+
+tr[data-rank="2"] td.sticky-col-rank,
+tr[data-rank="2"] td.sticky-col-name {
+  background: #f1f5f9 !important;
+}
+
+tr[data-rank="3"] td.sticky-col-rank,
+tr[data-rank="3"] td.sticky-col-name {
+  background: #ffedd5 !important;
+}
+
+/* 3. Leaderboard Pagination Bar */
+.leaderboard-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--stroke);
+  background: #ffffff;
+  border-radius: 0 0 18px 18px;
+}
+
+.pagination-info {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.pagination-controls-wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.page-size-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.page-size-selector select {
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.pagination-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pagination-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.pagination-page-label {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  padding: 0 8px;
+}
+
+@media (max-width: 640px) {
+  .leaderboard-pagination-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px 12px;
+  }
+
+  .pagination-controls-wrap {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .pagination-buttons {
+    justify-content: flex-end;
+  }
+}
+
+/* 4. Touch Device Optimization & Preventing iOS Safari Auto-Zoom */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea,
+  .form-input,
+  .date-input,
+  .search-input-main {
+    font-size: 16px !important; /* Prevents auto-zoom on iOS Safari */
+  }
+
+  button,
+  .btn,
+  .chip-btn,
+  .nav-tab-btn,
+  .mobile-nav-item {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Full Width Span in Details Grid on Mobile */
+  .detail-item.span-2,
+  .detail-item:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 5. Desktop (PC) Multi-Column & Hover Polish */
+@media (min-width: 1200px) {
+  .kpi-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .detail-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .stat-card {
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 24px -6px rgba(0, 0, 0, 0.08);
+  }
+
+  .dyn-item-card {
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+  }
+
+  .dyn-item-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 22px -5px rgba(107, 33, 168, 0.12);
+  }
+
+  tr:hover td {
+    background-color: rgba(245, 243, 255, 0.45);
+  }
+}
+
+/* 6. Calculation Modal Mobile Polish */
+@media (max-width: 640px) {
+  .modal-overlay,
+  .modal-backdrop {
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+
+  .calculation-modal {
+    max-height: 94vh !important;
+    border-radius: 20px 20px 0 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .calculation-modal .modal-header {
+    padding: 14px 16px !important;
+  }
+
+  .calculation-modal .modal-body {
+    padding: 14px 12px !important;
+  }
+
+  .calculation-modal .modal-footer {
+    padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)) !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .calculation-modal .modal-footer > button,
+  .calculation-modal .modal-footer > div,
+  .calculation-modal .modal-footer > div > button {
+    width: 100% !important;
+  }
+}
