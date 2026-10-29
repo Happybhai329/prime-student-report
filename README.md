@@ -45,6 +45,8 @@ The **Student Report Dashboard** is a modern, responsive, mobile-first full-stac
 - **📱 Mobile-First Responsive Design**:
   - Built with custom design system tokens: TPC Purple (`#6b21a8`) and Victory Green (`#16a34a`).
   - Adaptive glassmorphic UI cards, zero text clipping on compact viewports, and touch-optimized hit areas (≥ 44px).
+  - **Compact Responsive Filter Panel**: Compact single-row filter bar eliminating vertical whitespace and squished inputs on mobile.
+  - **Native Mobile Bottom Dock & Ranking Cards**: Ergonomic thumb-zone bottom navigation dock paired with responsive student rank cards and smooth paginated leaderboards.
 
 ---
 
