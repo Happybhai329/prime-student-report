@@ -16,7 +16,13 @@ import {
   Quote,
   Calculator,
   Trophy,
-  ArrowLeft
+  ArrowLeft,
+  FileText,
+  CalendarCheck,
+  BookOpenCheck,
+  Clock,
+  Layers,
+  AlertCircle
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTablePlugin from 'jspdf-autotable';
@@ -29,6 +35,23 @@ import {
 } from './AnalyticsCharts';
 import ComplaintsModal from './ComplaintsModal';
 import CalculationPreviewModal from './CalculationPreviewModal';
+import { generateAttendanceReportPDF, generateHomeworkReportPDF } from './ReportPdfExports';
+
+// Report type chips shown inside the report header (mirrors the search-screen toggle)
+const REPORT_MODE_CHIPS = [
+  { key: 'full', label: 'Full Report', icon: FileText },
+  { key: 'attendance', label: 'Attendance Report', icon: CalendarCheck },
+  { key: 'homework', label: 'Homework Report', icon: BookOpenCheck }
+];
+
+// Status classification regexes — kept identical to server-side rules so
+// client-side summaries always match the API-computed numbers exactly
+const ATT_PRESENT_RE = /(present|attend|late|p$|p\s)/i;
+const ATT_ABSENT_RE = /(absent|leave|miss|a$|a\s)/i;
+const HW_COMPLETED_RE = /(complete|completed|done|submitted|checked|resolved)/i;
+const HW_PENDING_RE = /(pending|incomplete|due|missing|notdone|open)/i;
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const runAutoTable = (doc, options) => {
   if (typeof doc.autoTable === 'function') {
@@ -65,7 +88,9 @@ export default function ReportView({
   onShowToast,
   onRefreshReport,
   leaderboardContext = null,
-  onBackToLeaderboard = null
+  onBackToLeaderboard = null,
+  reportMode = 'full', // 'full' | 'attendance' | 'homework'
+  onReportModeChange = null
 }) {
   const [activeRange, setActiveRange] = useState('all'); // 'all' | '30d' | '90d' | 'custom'
   const [customStart, setCustomStart] = useState('');
@@ -73,6 +98,8 @@ export default function ReportView({
   const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [showCalcModal, setShowCalcModal] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [downloadingAttPdf, setDownloadingAttPdf] = useState(false);
+  const [downloadingHwPdf, setDownloadingHwPdf] = useState(false);
   const [selectedExamType, setSelectedExamType] = useState('ALL');
 
   // Chart references for capturing canvas images
@@ -214,6 +241,77 @@ export default function ReportView({
       examType: r.examType || '-'
     }));
   }, [filteredExamRows]);
+
+  // Month-wise attendance aggregation for the dedicated Attendance Report
+  // (classification mirrors the server-side isPresent/isAbsent rules so numbers reconcile)
+  const attendanceMonthly = useMemo(() => {
+    const rows = attendance?.rows || [];
+    const monthMap = {};
+    rows.forEach((r) => {
+      const dateStr = String(r.date || '');
+      const m = dateStr.match(/^(\d{4})[-/](\d{1,2})/);
+      const label = m ? `${MONTH_NAMES[Number(m[2]) - 1] || 'Unknown'} ${m[1]}` : 'Unknown';
+      if (!monthMap[label]) {
+        monthMap[label] = { sortKey: m ? Number(m[1]) * 100 + Number(m[2]) : 0, present: 0, absent: 0, total: 0 };
+      }
+      monthMap[label].total += 1;
+      if (ATT_PRESENT_RE.test(r.presenceType || '')) monthMap[label].present += 1;
+      if (ATT_ABSENT_RE.test(r.presenceType || '')) monthMap[label].absent += 1;
+    });
+
+    return Object.keys(monthMap)
+      .map((label) => {
+        const b = monthMap[label];
+        const other = Math.max(b.total - b.present - b.absent, 0);
+        return {
+          month: label,
+          sortKey: b.sortKey,
+          present: b.present,
+          absent: b.absent,
+          other,
+          total: b.total,
+          percentage: b.total ? Number(((b.present / b.total) * 100).toFixed(1)) : 0
+        };
+      })
+      .sort((a, b) => b.sortKey - a.sortKey);
+  }, [attendance]);
+
+  // Subject-wise homework aggregation for the dedicated Homework Report
+  // (classification mirrors the server-side isCompletedHw/isPendingHw rules)
+  const homeworkBySubject = useMemo(() => {
+    const rows = homework?.rows || [];
+    const subMap = {};
+    rows.forEach((r) => {
+      const subject = r.subject || 'Unspecified';
+      if (!subMap[subject]) {
+        subMap[subject] = { total: 0, completed: 0, pending: 0, durations: [] };
+      }
+      const statusStr = r.finalStatus || r.status || '';
+      subMap[subject].total += 1;
+      if (HW_COMPLETED_RE.test(statusStr)) subMap[subject].completed += 1;
+      if (HW_PENDING_RE.test(statusStr)) subMap[subject].pending += 1;
+      const dur = Number(r.durationMin) || 0;
+      if (dur > 0) subMap[subject].durations.push(dur);
+    });
+
+    return Object.keys(subMap)
+      .map((subject) => {
+        const s = subMap[subject];
+        const other = Math.max(s.total - s.completed - s.pending, 0);
+        return {
+          subject,
+          total: s.total,
+          completed: s.completed,
+          pending: s.pending,
+          other,
+          averageDuration: s.durations.length
+            ? Number((s.durations.reduce((a, b) => a + b, 0) / s.durations.length).toFixed(1))
+            : 0,
+          completionRate: s.total ? Number(((s.completed / s.total) * 100).toFixed(1)) : 0
+        };
+      })
+      .sort((a, b) => b.total - a.total);
+  }, [homework]);
 
   // Preset Date Handlers
   const handlePreset = (preset) => {
@@ -695,6 +793,44 @@ export default function ReportView({
     }
   };
 
+  // Dedicated Attendance Report PDF (respects the active date filter)
+  const handleDownloadAttendancePDF = async () => {
+    setDownloadingAttPdf(true);
+    onShowToast?.('Preparing Official Student Attendance Report PDF...', 'info');
+
+    try {
+      await generateAttendanceReportPDF({
+        reportData,
+        chartImage: attChartRef.current ? attChartRef.current.toBase64Image() : null
+      });
+      onShowToast?.('Attendance Report PDF downloaded successfully!', 'success');
+    } catch (err) {
+      console.error('Attendance PDF export error:', err);
+      onShowToast?.('Failed to generate Attendance PDF: ' + err.message, 'error');
+    } finally {
+      setDownloadingAttPdf(false);
+    }
+  };
+
+  // Dedicated Homework Report PDF (respects the active date filter)
+  const handleDownloadHomeworkPDF = async () => {
+    setDownloadingHwPdf(true);
+    onShowToast?.('Preparing Official Student Homework Report PDF...', 'info');
+
+    try {
+      await generateHomeworkReportPDF({
+        reportData,
+        chartImage: hwChartRef.current ? hwChartRef.current.toBase64Image() : null
+      });
+      onShowToast?.('Homework Report PDF downloaded successfully!', 'success');
+    } catch (err) {
+      console.error('Homework PDF export error:', err);
+      onShowToast?.('Failed to generate Homework PDF: ' + err.message, 'error');
+    } finally {
+      setDownloadingHwPdf(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '26px' }}>
       {/* Institutional Header & Action Bar */}
@@ -712,7 +848,11 @@ export default function ReportView({
                 RIMC &bull; RMS &bull; SAINIK SCHOOL &bull; FOUNDATION
               </span>
               <span className="institution-report-type">
-                Student Academic & Disciplinary Progress Report Card
+                {reportMode === 'attendance'
+                  ? 'Official Student Attendance Report'
+                  : reportMode === 'homework'
+                  ? 'Official Student Homework Completion Report'
+                  : 'Student Academic & Disciplinary Progress Report Card'}
               </span>
             </div>
           </div>
@@ -736,39 +876,53 @@ export default function ReportView({
               </button>
             )}
 
-            <button
-              type="button"
-              className="btn btn-secondary report-action-btn"
-              onClick={() => setShowComplaintModal(true)}
-            >
-              <PlusCircle size={16} />
-              <span>Record Remark</span>
-            </button>
+            {reportMode === 'full' && (
+              <button
+                type="button"
+                className="btn btn-secondary report-action-btn"
+                onClick={() => setShowComplaintModal(true)}
+              >
+                <PlusCircle size={16} />
+                <span>Record Remark</span>
+              </button>
+            )}
 
-            <button
-              type="button"
-              className="btn btn-secondary report-action-btn"
-              onClick={() => setShowCalcModal(true)}
-              style={{
-                borderColor: 'rgba(124, 58, 237, 0.35)',
-                background: 'linear-gradient(135deg, rgba(124,58,237,0.08), rgba(16,185,129,0.05))',
-                color: 'var(--tpc-purple)',
-                fontWeight: 600
-              }}
-              title="Audit score calculation breakdown and test weightages"
-            >
-              <Calculator size={16} />
-              <span>Audit Calculations</span>
-            </button>
+            {reportMode === 'full' && (
+              <button
+                type="button"
+                className="btn btn-secondary report-action-btn"
+                onClick={() => setShowCalcModal(true)}
+                style={{
+                  borderColor: 'rgba(124, 58, 237, 0.35)',
+                  background: 'linear-gradient(135deg, rgba(124,58,237,0.08), rgba(16,185,129,0.05))',
+                  color: 'var(--tpc-purple)',
+                  fontWeight: 600
+                }}
+                title="Audit score calculation breakdown and test weightages"
+              >
+                <Calculator size={16} />
+                <span>Audit Calculations</span>
+              </button>
+            )}
 
             <button
               type="button"
               className="btn btn-primary report-action-btn"
-              onClick={handleDownloadPDF}
-              disabled={downloadingPdf}
+              onClick={
+                reportMode === 'attendance'
+                  ? handleDownloadAttendancePDF
+                  : reportMode === 'homework'
+                  ? handleDownloadHomeworkPDF
+                  : handleDownloadPDF
+              }
+              disabled={downloadingPdf || downloadingAttPdf || downloadingHwPdf}
               style={{ fontWeight: 700 }}
             >
-              {downloadingPdf ? (
+              {(reportMode === 'attendance'
+                ? downloadingAttPdf
+                : reportMode === 'homework'
+                ? downloadingHwPdf
+                : downloadingPdf) ? (
                 <>
                   <div className="spinner" style={{ width: '16px', height: '16px' }} />
                   <span>Generating PDF...</span>
@@ -776,7 +930,13 @@ export default function ReportView({
               ) : (
                 <>
                   <Download size={17} />
-                  <span>Download Official PDF</span>
+                  <span>
+                    {reportMode === 'attendance'
+                      ? 'Download Attendance PDF'
+                      : reportMode === 'homework'
+                      ? 'Download Homework PDF'
+                      : 'Download Official PDF'}
+                  </span>
                 </>
               )}
             </button>
@@ -791,6 +951,44 @@ export default function ReportView({
           <div className="scope-item">
             Report Scope: <strong>{filters?.label || 'Full History'}</strong>
           </div>
+        </div>
+      </section>
+
+      {/* Report Type Switcher — instantly flip between Full / Attendance / Homework views.
+          Switching never refetches: the report bundle already carries all date-filtered sections. */}
+      <section className="filter-bar report-mode-bar">
+        <div className="filter-preset-group">
+          <div className="filter-label-group">
+            <FileText size={16} color="var(--tpc-purple)" />
+            <span className="filter-title">Report Type:</span>
+          </div>
+          <div className="filter-chips">
+            {REPORT_MODE_CHIPS.map((mode) => {
+              const ModeIcon = mode.icon;
+              const isActive = reportMode === mode.key;
+              return (
+                <button
+                  key={mode.key}
+                  type="button"
+                  className={`chip-btn ${isActive ? 'active' : ''}`}
+                  onClick={() => onReportModeChange?.(mode.key)}
+                >
+                  <ModeIcon size={14} />
+                  <span>{mode.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="filter-status-indicator">
+          <span className="badge badge-primary">
+            {reportMode === 'attendance'
+              ? 'Mode: Dedicated Attendance Report'
+              : reportMode === 'homework'
+              ? 'Mode: Dedicated Homework Report'
+              : 'Mode: Complete Report Card'}
+          </span>
         </div>
       </section>
 
@@ -854,116 +1052,248 @@ export default function ReportView({
         </form>
       </section>
 
-      {/* Dynamic Examination Type Filter */}
-      <section className="filter-bar exam-filter-bar">
-        <div className="filter-preset-group">
-          <div className="filter-label-group">
-            <Filter size={16} style={{ color: 'var(--tpc-purple)' }} />
-            <span className="filter-title">Exam Type Filter:</span>
-          </div>
-          <div className="filter-chips">
-            {availableExamTypes.map((type) => {
-              const isSelected = selectedExamType === type;
-              const countForType = type === 'ALL'
-                ? (results?.rows || []).length
-                : (results?.rows || []).filter(r => (r.examType || '').trim() === type).length;
+      {/* Dynamic Examination Type Filter — only applicable for Full Academic Report */}
+      {reportMode === 'full' && (
+        <section className="filter-bar exam-filter-bar">
+          <div className="filter-preset-group">
+            <div className="filter-label-group">
+              <Filter size={16} style={{ color: 'var(--tpc-purple)' }} />
+              <span className="filter-title">Exam Type Filter:</span>
+            </div>
+            <div className="filter-chips">
+              {availableExamTypes.map((type) => {
+                const isSelected = selectedExamType === type;
+                const countForType = type === 'ALL'
+                  ? (results?.rows || []).length
+                  : (results?.rows || []).filter(r => (r.examType || '').trim() === type).length;
 
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  className={`chip-btn ${isSelected ? 'active' : ''}`}
-                  onClick={() => setSelectedExamType(type)}
-                >
-                  <span>{type}</span>
-                  <span className="chip-badge">{countForType}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="filter-status-indicator">
-          <span className="badge badge-primary">
-            {selectedExamType === 'ALL' ? 'Mode: All Exam Types (Avg %)' : `Selected: ${selectedExamType}`}
-          </span>
-        </div>
-      </section>
-
-      {/* Key Performance Metric Cards */}
-      <section className="kpi-grid">
-        {/* Attendance */}
-        <div className="stat-card accent-success">
-          <div className="stat-header">
-            <span className="stat-label">Attendance Rate</span>
-            <div className="stat-icon" style={{ color: 'var(--tpc-green)', background: 'var(--success-bg)' }}>
-              <CheckCircle size={20} />
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    className={`chip-btn ${isSelected ? 'active' : ''}`}
+                    onClick={() => setSelectedExamType(type)}
+                  >
+                    <span>{type}</span>
+                    <span className="chip-badge">{countForType}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
-          <div className="stat-value">{attendance.summary.attendancePercentage || 0}%</div>
-          <div className="stat-footer">
-            {attendance.summary.present || 0} Present / {attendance.summary.totalClasses || 0} Total Classes
-          </div>
-        </div>
 
-        {/* Homework */}
-        <div className="stat-card accent-warning">
-          <div className="stat-header">
-            <span className="stat-label">Homework Completion</span>
-            <div className="stat-icon" style={{ color: 'var(--warning)', background: 'var(--warning-bg)' }}>
-              <BookOpen size={20} />
-            </div>
-          </div>
-          <div className="stat-value">{homework.summary.completionRate || 0}%</div>
-          <div className="stat-footer">
-            {homework.summary.completedHomework || 0} Completed / {homework.summary.totalHomework || 0} Assignments
-          </div>
-        </div>
-
-        {/* Average Marks / Overall Performance */}
-        <div className="stat-card">
-          <div className="stat-header">
-            <span className="stat-label">
-              {selectedExamType === 'ALL' ? 'Overall Performance' : `Average Score (${selectedExamType})`}
+          <div className="filter-status-indicator">
+            <span className="badge badge-primary">
+              {selectedExamType === 'ALL' ? 'Mode: All Exam Types (Avg %)' : `Selected: ${selectedExamType}`}
             </span>
-            <div className="stat-icon" style={{ color: 'var(--tpc-purple)', background: 'var(--tpc-purple-subtle)' }}>
-              {selectedExamType === 'ALL' ? <TrendingUp size={20} /> : <Award size={20} />}
-            </div>
           </div>
-          <div className="stat-value">
-            {selectedExamType === 'ALL'
-              ? `${examMetrics.avgPercentage}%`
-              : `${examMetrics.avgMarks}${examMetrics.referenceMax > 0 ? ` / ${examMetrics.referenceMax}` : ''}`}
-          </div>
-          <div className="stat-footer">
-            {selectedExamType === 'ALL'
-              ? `Avg % across ${examMetrics.count} tests (all exam types)`
-              : `Average: ${examMetrics.avgPercentage}% across ${examMetrics.count} tests`}
-          </div>
-        </div>
+        </section>
+      )}
 
-        {/* Extremes / Remarks */}
-        <div className="stat-card accent-secondary">
-          <div className="stat-header">
-            <span className="stat-label">
-              {selectedExamType === 'ALL' ? 'Score Extremes' : `Score Range (${selectedExamType})`}
-            </span>
-            <div className="stat-icon" style={{ color: '#0284c7', background: '#e0f2fe' }}>
-              <Percent size={20} />
+      {/* Key Performance Metric Cards — Tailored for Active Report Mode */}
+      {reportMode === 'attendance' && (
+        <section className="kpi-grid">
+          <div className="stat-card accent-success">
+            <div className="stat-header">
+              <span className="stat-label">Attendance Rate</span>
+              <div className="stat-icon" style={{ color: 'var(--tpc-green)', background: 'var(--success-bg)' }}>
+                <CheckCircle size={20} />
+              </div>
+            </div>
+            <div className="stat-value">{attendance.summary.attendancePercentage || 0}%</div>
+            <div className="stat-footer">
+              {attendance.summary.present || 0} of {attendance.summary.totalClasses || 0} Sessions Present
             </div>
           </div>
-          <div className="stat-value">
-            {selectedExamType === 'ALL'
-              ? `${examMetrics.highestPercentage}% / ${examMetrics.lowestPercentage}%`
-              : `${examMetrics.highestScore} / ${examMetrics.lowestScore}`}
+
+          <div className="stat-card accent-success">
+            <div className="stat-header">
+              <span className="stat-label">Present Sessions</span>
+              <div className="stat-icon" style={{ color: 'var(--tpc-green)', background: 'var(--success-bg)' }}>
+                <CalendarCheck size={20} />
+              </div>
+            </div>
+            <div className="stat-value">{attendance.summary.present || 0}</div>
+            <div className="stat-footer">Days / Sessions Attended</div>
           </div>
-          <div className="stat-footer">
-            {selectedExamType === 'ALL'
-              ? `High: ${examMetrics.highestPercentage}% | Low: ${examMetrics.lowestPercentage}%`
-              : `High: ${examMetrics.highestScore} (${examMetrics.highestPercentage}%) | Low: ${examMetrics.lowestScore} (${examMetrics.lowestPercentage}%)`}
+
+          <div className="stat-card accent-danger">
+            <div className="stat-header">
+              <span className="stat-label">Absent Days</span>
+              <div className="stat-icon" style={{ color: '#dc2626', background: 'rgba(220, 38, 38, 0.1)' }}>
+                <AlertCircle size={20} />
+              </div>
+            </div>
+            <div className="stat-value" style={{ color: '#dc2626' }}>{attendance.summary.absent || 0}</div>
+            <div className="stat-footer">Unattended / Missed Sessions</div>
           </div>
-        </div>
-      </section>
+
+          <div className="stat-card accent-warning">
+            <div className="stat-header">
+              <span className="stat-label">Other / Leaves</span>
+              <div className="stat-icon" style={{ color: '#d97706', background: 'rgba(217, 119, 6, 0.1)' }}>
+                <Clock size={20} />
+              </div>
+            </div>
+            <div className="stat-value">{attendance.summary.other || 0}</div>
+            <div className="stat-footer">Permitted Leaves / Late / Misc</div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-header">
+              <span className="stat-label">Total Sessions</span>
+              <div className="stat-icon" style={{ color: 'var(--tpc-purple)', background: 'var(--tpc-purple-subtle)' }}>
+                <Layers size={20} />
+              </div>
+            </div>
+            <div className="stat-value">{attendance.summary.totalClasses || 0}</div>
+            <div className="stat-footer">Total Classes in Selected Range</div>
+          </div>
+        </section>
+      )}
+
+      {reportMode === 'homework' && (
+        <section className="kpi-grid">
+          <div className="stat-card accent-primary">
+            <div className="stat-header">
+              <span className="stat-label">Completion Rate</span>
+              <div className="stat-icon" style={{ color: 'var(--tpc-purple)', background: 'var(--tpc-purple-subtle)' }}>
+                <CheckCircle size={20} />
+              </div>
+            </div>
+            <div className="stat-value">{homework.summary.completionRate || 0}%</div>
+            <div className="stat-footer">
+              {homework.summary.completedHomework || 0} of {homework.summary.totalHomework || 0} Tasks Completed
+            </div>
+          </div>
+
+          <div className="stat-card accent-success">
+            <div className="stat-header">
+              <span className="stat-label">Completed Tasks</span>
+              <div className="stat-icon" style={{ color: 'var(--tpc-green)', background: 'var(--success-bg)' }}>
+                <BookOpenCheck size={20} />
+              </div>
+            </div>
+            <div className="stat-value">{homework.summary.completedHomework || 0}</div>
+            <div className="stat-footer">Verified Submissions</div>
+          </div>
+
+          <div className="stat-card accent-danger">
+            <div className="stat-header">
+              <span className="stat-label">Pending Tasks</span>
+              <div className="stat-icon" style={{ color: '#dc2626', background: 'rgba(220, 38, 38, 0.1)' }}>
+                <AlertCircle size={20} />
+              </div>
+            </div>
+            <div className="stat-value" style={{ color: '#dc2626' }}>{homework.summary.pendingHomework || 0}</div>
+            <div className="stat-footer">Incomplete / Overdue Tasks</div>
+          </div>
+
+          <div className="stat-card accent-warning">
+            <div className="stat-header">
+              <span className="stat-label">Avg Task Time</span>
+              <div className="stat-icon" style={{ color: '#d97706', background: 'rgba(217, 119, 6, 0.1)' }}>
+                <Clock size={20} />
+              </div>
+            </div>
+            <div className="stat-value">
+              {homework.summary.avgDuration
+                ? `${homework.summary.avgDuration} min`
+                : (homeworkBySubject.length > 0 && homeworkBySubject.some(s => s.averageDuration > 0)
+                  ? `${Math.round(homeworkBySubject.reduce((a, b) => a + (b.averageDuration || 0), 0) / (homeworkBySubject.filter(b => b.averageDuration > 0).length || 1))} min`
+                  : '-')}
+            </div>
+            <div className="stat-footer">Estimated Time per Assignment</div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-header">
+              <span className="stat-label">Total Assigned</span>
+              <div className="stat-icon" style={{ color: 'var(--tpc-purple)', background: 'var(--tpc-purple-subtle)' }}>
+                <BookOpen size={20} />
+              </div>
+            </div>
+            <div className="stat-value">{homework.summary.totalHomework || 0}</div>
+            <div className="stat-footer">Total Homework Given in Period</div>
+          </div>
+        </section>
+      )}
+
+      {reportMode === 'full' && (
+        <section className="kpi-grid">
+          {/* Attendance */}
+          <div className="stat-card accent-success">
+            <div className="stat-header">
+              <span className="stat-label">Attendance Rate</span>
+              <div className="stat-icon" style={{ color: 'var(--tpc-green)', background: 'var(--success-bg)' }}>
+                <CheckCircle size={20} />
+              </div>
+            </div>
+            <div className="stat-value">{attendance.summary.attendancePercentage || 0}%</div>
+            <div className="stat-footer">
+              {attendance.summary.present || 0} Present / {attendance.summary.totalClasses || 0} Total Classes
+            </div>
+          </div>
+
+          {/* Homework */}
+          <div className="stat-card accent-warning">
+            <div className="stat-header">
+              <span className="stat-label">Homework Completion</span>
+              <div className="stat-icon" style={{ color: 'var(--warning)', background: 'var(--warning-bg)' }}>
+                <BookOpen size={20} />
+              </div>
+            </div>
+            <div className="stat-value">{homework.summary.completionRate || 0}%</div>
+            <div className="stat-footer">
+              {homework.summary.completedHomework || 0} Completed / {homework.summary.totalHomework || 0} Assignments
+            </div>
+          </div>
+
+          {/* Average Marks / Overall Performance */}
+          <div className="stat-card">
+            <div className="stat-header">
+              <span className="stat-label">
+                {selectedExamType === 'ALL' ? 'Overall Performance' : `Average Score (${selectedExamType})`}
+              </span>
+              <div className="stat-icon" style={{ color: 'var(--tpc-purple)', background: 'var(--tpc-purple-subtle)' }}>
+                {selectedExamType === 'ALL' ? <TrendingUp size={20} /> : <Award size={20} />}
+              </div>
+            </div>
+            <div className="stat-value">
+              {selectedExamType === 'ALL'
+                ? `${examMetrics.avgPercentage}%`
+                : `${examMetrics.avgMarks}${examMetrics.referenceMax > 0 ? ` / ${examMetrics.referenceMax}` : ''}`}
+            </div>
+            <div className="stat-footer">
+              {selectedExamType === 'ALL'
+                ? `Avg % across ${examMetrics.count} tests (all exam types)`
+                : `Average: ${examMetrics.avgPercentage}% across ${examMetrics.count} tests`}
+            </div>
+          </div>
+
+          {/* Extremes / Remarks */}
+          <div className="stat-card accent-secondary">
+            <div className="stat-header">
+              <span className="stat-label">
+                {selectedExamType === 'ALL' ? 'Score Extremes' : `Score Range (${selectedExamType})`}
+              </span>
+              <div className="stat-icon" style={{ color: '#0284c7', background: '#e0f2fe' }}>
+                <Percent size={20} />
+              </div>
+            </div>
+            <div className="stat-value">
+              {selectedExamType === 'ALL'
+                ? `${examMetrics.highestPercentage}% / ${examMetrics.lowestPercentage}%`
+                : `${examMetrics.highestScore} / ${examMetrics.lowestScore}`}
+            </div>
+            <div className="stat-footer">
+              {selectedExamType === 'ALL'
+                ? `High: ${examMetrics.highestPercentage}% | Low: ${examMetrics.lowestPercentage}%`
+                : `High: ${examMetrics.highestScore} (${examMetrics.highestPercentage}%) | Low: ${examMetrics.lowestScore} (${examMetrics.lowestPercentage}%)`}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Student Profile Identity Card */}
       <section className="profile-card glass">
@@ -1046,301 +1376,566 @@ export default function ReportView({
         )}
       </section>
 
-      {/* Attendance & Homework Visual Analytics */}
-      <section className="analytics-grid">
-        {/* Attendance Card */}
-        <article className="chart-card">
-          <div className="chart-head">
-            <h3 className="chart-title">Attendance Distribution</h3>
-            <span className="badge badge-strong">
-              {attendance.summary.attendancePercentage || 0}% Present
-            </span>
-          </div>
+      {/* Dedicated Attendance Report View */}
+      {reportMode === 'attendance' && (
+        <>
+          <section className="analytics-grid">
+            {/* Attendance Chart */}
+            <article className="chart-card">
+              <div className="chart-head">
+                <h3 className="chart-title">Attendance Distribution</h3>
+                <span className="badge badge-strong">
+                  {attendance.summary.attendancePercentage || 0}% Present
+                </span>
+              </div>
+              <div className="chart-frame">
+                <AttendanceChart
+                  ref={attChartRef}
+                  labels={attendance.chart.labels}
+                  data={attendance.chart.data}
+                />
+              </div>
+              <div style={{ padding: '12px 16px', background: 'var(--bg-main)', borderRadius: '10px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                Overall presence rate: <strong>{attendance.summary.attendancePercentage || 0}%</strong> across {attendance.summary.totalClasses || 0} recorded sessions.
+              </div>
+            </article>
 
-          <div className="chart-frame">
-            <AttendanceChart
-              ref={attChartRef}
-              labels={attendance.chart.labels}
-              data={attendance.chart.data}
-            />
-          </div>
-
-          <div className="table-wrap" style={{ maxHeight: '220px', overflowY: 'auto' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Status</th>
-                  <th>Faculty</th>
-                  <th>Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {attendance.rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                      No attendance records found for this period
-                    </td>
-                  </tr>
-                ) : (
-                  attendance.rows.slice(0, 15).map((row, idx) => (
-                    <tr key={idx}>
-                      <td>{row.date}</td>
-                      <td>
-                        <span
-                          className={`badge ${
-                            /(present|attend|late|p$)/i.test(row.presenceType)
-                              ? 'badge-strong'
-                              : /(absent|leave|miss|a$)/i.test(row.presenceType)
-                              ? 'badge-weak'
-                              : 'badge-neutral'
-                          }`}
-                        >
-                          {row.presenceType}
-                        </span>
-                      </td>
-                      <td>{row.teacherName}</td>
-                      <td>{row.callReason}</td>
+            {/* Month-Wise Attendance Breakdown */}
+            <article className="chart-card">
+              <div className="chart-head">
+                <h3 className="chart-title">Monthly Attendance Summary</h3>
+                <span className="badge badge-neutral">
+                  {attendanceMonthly.length} {attendanceMonthly.length === 1 ? 'Month' : 'Months'}
+                </span>
+              </div>
+              <div className="table-wrap" style={{ maxHeight: '340px', overflowY: 'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Month</th>
+                      <th>Attendance %</th>
+                      <th>Present</th>
+                      <th>Absent</th>
+                      <th>Other</th>
+                      <th>Total</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </article>
+                  </thead>
+                  <tbody>
+                    {attendanceMonthly.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          No monthly attendance records for selected period
+                        </td>
+                      </tr>
+                    ) : (
+                      attendanceMonthly.map((m, idx) => (
+                        <tr key={idx}>
+                          <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{m.month}</td>
+                          <td style={{ fontWeight: 800, color: m.percentage >= 75 ? 'var(--tpc-green)' : '#dc2626' }}>
+                            {m.percentage}%
+                          </td>
+                          <td>{m.present}</td>
+                          <td>{m.absent}</td>
+                          <td>{m.other}</td>
+                          <td style={{ fontWeight: 600 }}>{m.total}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </section>
 
-        {/* Homework Card */}
-        <article className="chart-card">
-          <div className="chart-head">
-            <h3 className="chart-title">Homework & Task Completion</h3>
-            <span className="badge badge-primary">
-              {homework.summary.completionRate || 0}% Completion
-            </span>
-          </div>
+          {/* Full Day-by-Day Attendance Register */}
+          <section className="chart-card">
+            <div className="chart-head">
+              <div>
+                <h3 className="chart-title">Complete Day-by-Day Attendance Register</h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Full session log of daily classroom attendance, verified faculty, and observation reasons
+                </p>
+              </div>
+              <span className="badge badge-neutral">Total Records: {attendance.rows.length}</span>
+            </div>
 
-          <div className="chart-frame">
-            <HomeworkChart
-              ref={hwChartRef}
-              labels={homework.chart.labels}
-              data={homework.chart.data}
-            />
-          </div>
-
-          <div className="table-wrap" style={{ maxHeight: '220px', overflowY: 'auto' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Subject</th>
-                  <th>Status</th>
-                  <th>Duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {homework.rows.length === 0 ? (
+            <div className="table-wrap" style={{ maxHeight: '460px', overflowY: 'auto' }}>
+              <table>
+                <thead>
                   <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                      No homework records found for this period
-                    </td>
+                    <th>Session Date</th>
+                    <th>Attendance Status</th>
+                    <th>Faculty In-Charge</th>
+                    <th>Reason / Observation Remarks</th>
                   </tr>
-                ) : (
-                  homework.rows.slice(0, 15).map((row, idx) => (
-                    <tr key={idx}>
-                      <td>{row.date}</td>
-                      <td style={{ fontWeight: 700 }}>{row.subject}</td>
-                      <td>
-                        <span
-                          className={`badge ${
-                            /(complete|done|submitted)/i.test(row.finalStatus || row.status)
-                              ? 'badge-strong'
-                              : /(pending|due|missing)/i.test(row.finalStatus || row.status)
-                              ? 'badge-weak'
-                              : 'badge-average'
-                          }`}
-                        >
-                          {row.finalStatus || row.status}
-                        </span>
+                </thead>
+                <tbody>
+                  {attendance.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
+                        No attendance sessions recorded for the selected date range.
                       </td>
-                      <td>{row.durationMin ? `${row.durationMin} min` : '-'}</td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </article>
-      </section>
+                  ) : (
+                    attendance.rows.map((row, idx) => (
+                      <tr key={idx}>
+                        <td style={{ fontWeight: 600 }}>{row.date}</td>
+                        <td>
+                          <span
+                            className={`badge ${
+                              ATT_PRESENT_RE.test(row.presenceType)
+                                ? 'badge-strong'
+                                : ATT_ABSENT_RE.test(row.presenceType)
+                                ? 'badge-weak'
+                                : 'badge-neutral'
+                            }`}
+                          >
+                            {row.presenceType}
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 600 }}>{row.teacherName || '-'}</td>
+                        <td style={{ whiteSpace: 'normal', minWidth: '220px' }}>{row.callReason || '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
 
-      {/* Subject-Wise Strength & Weakness Analysis */}
-      <section className="chart-card">
-        <div className="chart-head">
-          <div>
-            <h3 className="chart-title">
-              Subject-Wise Strength & Weakness Analysis {selectedExamType !== 'ALL' ? `(${selectedExamType})` : ''}
-            </h3>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Standard Classification: Strong (&ge; 80%), Average (50% - 79%), Weak (&lt; 50%)
-            </p>
-          </div>
-        </div>
+      {/* Dedicated Homework Report View */}
+      {reportMode === 'homework' && (
+        <>
+          <section className="analytics-grid">
+            {/* Homework Chart */}
+            <article className="chart-card">
+              <div className="chart-head">
+                <h3 className="chart-title">Homework & Task Completion</h3>
+                <span className="badge badge-primary">
+                  {homework.summary.completionRate || 0}% Completion
+                </span>
+              </div>
+              <div className="chart-frame">
+                <HomeworkChart
+                  ref={hwChartRef}
+                  labels={homework.chart.labels}
+                  data={homework.chart.data}
+                />
+              </div>
+              <div style={{ padding: '12px 16px', background: 'var(--bg-main)', borderRadius: '10px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                Completed <strong>{homework.summary.completedHomework || 0}</strong> of <strong>{homework.summary.totalHomework || 0}</strong> assignments ({homework.summary.completionRate || 0}% completion rate).
+              </div>
+            </article>
 
-        <div className="chart-frame" style={{ height: '260px' }}>
-          <SubjectWiseChart ref={subjChartRef} subjectWise={filteredSubjectWise} />
-        </div>
+            {/* Subject-Wise Homework Breakdown */}
+            <article className="chart-card">
+              <div className="chart-head">
+                <h3 className="chart-title">Subject-Wise Homework Completion</h3>
+                <span className="badge badge-neutral">
+                  {homeworkBySubject.length} {homeworkBySubject.length === 1 ? 'Subject' : 'Subjects'}
+                </span>
+              </div>
+              <div className="table-wrap" style={{ maxHeight: '340px', overflowY: 'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Subject</th>
+                      <th>Completion %</th>
+                      <th>Done</th>
+                      <th>Pending</th>
+                      <th>Avg Duration</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {homeworkBySubject.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          No subject homework records for selected period
+                        </td>
+                      </tr>
+                    ) : (
+                      homeworkBySubject.map((s, idx) => (
+                        <tr key={idx}>
+                          <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{s.subject}</td>
+                          <td style={{ fontWeight: 800, color: s.completionRate >= 75 ? 'var(--tpc-green)' : '#dc2626' }}>
+                            {s.completionRate}%
+                          </td>
+                          <td>{s.completed}</td>
+                          <td>{s.pending}</td>
+                          <td>{s.averageDuration ? `${s.averageDuration} min` : '-'}</td>
+                          <td style={{ fontWeight: 600 }}>{s.total}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </section>
 
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Subject Name</th>
-                <th>Avg Obtained</th>
-                <th>Avg Max Marks</th>
-                <th>Percentage (%)</th>
-                <th>Performance Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSubjectWise.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                    No subject examination data recorded {selectedExamType !== 'ALL' ? `for ${selectedExamType}` : ''}
-                  </td>
-                </tr>
-              ) : (
-                filteredSubjectWise.map((sub, idx) => (
-                  <tr key={idx}>
-                    <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{sub.subjectName}</td>
-                    <td>{sub.averageObtainedMarks}</td>
-                    <td>{sub.averageMaxMarks}</td>
-                    <td style={{ fontWeight: 700 }}>{sub.percentage}%</td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          sub.status === 'Strong'
-                            ? 'badge-strong'
-                            : sub.status === 'Weak'
-                            ? 'badge-weak'
-                            : 'badge-average'
-                        }`}
-                      >
-                        {sub.status}
-                      </span>
-                    </td>
+          {/* Full Homework & Assignment Register */}
+          <section className="chart-card">
+            <div className="chart-head">
+              <div>
+                <h3 className="chart-title">Complete Homework & Assignment Register</h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Full register of all assigned tasks, subjects, submission statuses, and duration logs
+                </p>
+              </div>
+              <span className="badge badge-neutral">Total Tasks: {homework.rows.length}</span>
+            </div>
+
+            <div className="table-wrap" style={{ maxHeight: '460px', overflowY: 'auto' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Assigned Date</th>
+                    <th>Subject</th>
+                    <th>Submission Status</th>
+                    <th>Estimated Duration</th>
+                    <th>Faculty In-Charge</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                </thead>
+                <tbody>
+                  {homework.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
+                        No homework tasks recorded for the selected date range.
+                      </td>
+                    </tr>
+                  ) : (
+                    homework.rows.map((row, idx) => (
+                      <tr key={idx}>
+                        <td>{row.date}</td>
+                        <td style={{ fontWeight: 700 }}>{row.subject}</td>
+                        <td>
+                          <span
+                            className={`badge ${
+                              HW_COMPLETED_RE.test(row.finalStatus || row.status)
+                                ? 'badge-strong'
+                                : HW_PENDING_RE.test(row.finalStatus || row.status)
+                                ? 'badge-weak'
+                                : 'badge-average'
+                            }`}
+                          >
+                            {row.finalStatus || row.status}
+                          </span>
+                        </td>
+                        <td>{row.durationMin ? `${row.durationMin} min` : '-'}</td>
+                        <td>{row.teacherName || '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
 
-      {/* Examination Performance Trend & History */}
-      <section className="chart-card">
-        <div className="chart-head">
-          <h3 className="chart-title">
-            Examination Performance History & Trend {selectedExamType !== 'ALL' ? `(${selectedExamType})` : ''}
-          </h3>
-          <span className="badge badge-neutral">Total Tests: {filteredExamRows.length}</span>
-        </div>
+      {/* Full Academic Report Card View */}
+      {reportMode === 'full' && (
+        <>
+          {/* Attendance & Homework Visual Analytics */}
+          <section className="analytics-grid">
+            {/* Attendance Card */}
+            <article className="chart-card">
+              <div className="chart-head">
+                <h3 className="chart-title">Attendance Distribution</h3>
+                <span className="badge badge-strong">
+                  {attendance.summary.attendancePercentage || 0}% Present
+                </span>
+              </div>
 
-        <div className="chart-frame" style={{ height: '260px' }}>
-          <PerformanceTrendChart ref={trendChartRef} trend={filteredTrend} />
-        </div>
+              <div className="chart-frame">
+                <AttendanceChart
+                  ref={attChartRef}
+                  labels={attendance.chart.labels}
+                  data={attendance.chart.data}
+                />
+              </div>
 
-        <div className="table-wrap" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-          <table>
-            <thead>
-              <tr>
-                <th>Exam Date</th>
-                <th>Test ID</th>
-                <th>Exam Type</th>
-                <th>Marks Obtained</th>
-                <th>Max Marks</th>
-                <th>Percentage</th>
-                <th>Rank</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredExamRows.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                    No exam records found {selectedExamType !== 'ALL' ? `for ${selectedExamType}` : ''}
-                  </td>
-                </tr>
-              ) : (
-                filteredExamRows.map((row, idx) => (
-                  <tr key={idx}>
-                    <td>{row.examDate}</td>
-                    <td style={{ fontWeight: 600 }}>{row.testId}</td>
-                    <td>{row.examType}</td>
-                    <td style={{ fontWeight: 800 }}>{row.totalObtainedMarks}</td>
-                    <td>{row.examTotalMaxMarks}</td>
-                    <td style={{ fontWeight: 700 }}>{row.percentage}%</td>
-                    <td>{row.rank ? `#${row.rank}` : '-'}</td>
+              <div className="table-wrap" style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Status</th>
+                      <th>Faculty</th>
+                      <th>Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attendance.rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          No attendance records found for this period
+                        </td>
+                      </tr>
+                    ) : (
+                      attendance.rows.slice(0, 15).map((row, idx) => (
+                        <tr key={idx}>
+                          <td>{row.date}</td>
+                          <td>
+                            <span
+                              className={`badge ${
+                                /(present|attend|late|p$)/i.test(row.presenceType)
+                                  ? 'badge-strong'
+                                  : /(absent|leave|miss|a$)/i.test(row.presenceType)
+                                  ? 'badge-weak'
+                                  : 'badge-neutral'
+                              }`}
+                            >
+                              {row.presenceType}
+                            </span>
+                          </td>
+                          <td>{row.teacherName}</td>
+                          <td>{row.callReason}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            {/* Homework Card */}
+            <article className="chart-card">
+              <div className="chart-head">
+                <h3 className="chart-title">Homework & Task Completion</h3>
+                <span className="badge badge-primary">
+                  {homework.summary.completionRate || 0}% Completion
+                </span>
+              </div>
+
+              <div className="chart-frame">
+                <HomeworkChart
+                  ref={hwChartRef}
+                  labels={homework.chart.labels}
+                  data={homework.chart.data}
+                />
+              </div>
+
+              <div className="table-wrap" style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Subject</th>
+                      <th>Status</th>
+                      <th>Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {homework.rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          No homework records found for this period
+                        </td>
+                      </tr>
+                    ) : (
+                      homework.rows.slice(0, 15).map((row, idx) => (
+                        <tr key={idx}>
+                          <td>{row.date}</td>
+                          <td style={{ fontWeight: 700 }}>{row.subject}</td>
+                          <td>
+                            <span
+                              className={`badge ${
+                                /(complete|done|submitted)/i.test(row.finalStatus || row.status)
+                                  ? 'badge-strong'
+                                  : /(pending|due|missing)/i.test(row.finalStatus || row.status)
+                                  ? 'badge-weak'
+                                  : 'badge-average'
+                              }`}
+                            >
+                              {row.finalStatus || row.status}
+                            </span>
+                          </td>
+                          <td>{row.durationMin ? `${row.durationMin} min` : '-'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </section>
+
+          {/* Subject-Wise Strength & Weakness Analysis */}
+          <section className="chart-card">
+            <div className="chart-head">
+              <div>
+                <h3 className="chart-title">
+                  Subject-Wise Strength & Weakness Analysis {selectedExamType !== 'ALL' ? `(${selectedExamType})` : ''}
+                </h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Standard Classification: Strong (&ge; 80%), Average (50% - 79%), Weak (&lt; 50%)
+                </p>
+              </div>
+            </div>
+
+            <div className="chart-frame" style={{ height: '260px' }}>
+              <SubjectWiseChart ref={subjChartRef} subjectWise={filteredSubjectWise} />
+            </div>
+
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Subject Name</th>
+                    <th>Avg Obtained</th>
+                    <th>Avg Max Marks</th>
+                    <th>Percentage (%)</th>
+                    <th>Performance Status</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                </thead>
+                <tbody>
+                  {filteredSubjectWise.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No subject examination data recorded {selectedExamType !== 'ALL' ? `for ${selectedExamType}` : ''}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredSubjectWise.map((sub, idx) => (
+                      <tr key={idx}>
+                        <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{sub.subjectName}</td>
+                        <td>{sub.averageObtainedMarks}</td>
+                        <td>{sub.averageMaxMarks}</td>
+                        <td style={{ fontWeight: 700 }}>{sub.percentage}%</td>
+                        <td>
+                          <span
+                            className={`badge ${
+                              sub.status === 'Strong'
+                                ? 'badge-strong'
+                                : sub.status === 'Weak'
+                                ? 'badge-weak'
+                                : 'badge-average'
+                            }`}
+                          >
+                            {sub.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-      {/* Disciplinary Observations & Remarks */}
-      <section className="chart-card">
-        <div className="chart-head">
-          <div>
-            <h3 className="chart-title">Faculty Observations & Remarks</h3>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              Feedback and academic remarks logged by faculty members
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setShowComplaintModal(true)}
-          >
-            <PlusCircle size={14} />
-            <span>Add Remark</span>
-          </button>
-        </div>
+          {/* Examination Performance Trend & History */}
+          <section className="chart-card">
+            <div className="chart-head">
+              <h3 className="chart-title">
+                Examination Performance History & Trend {selectedExamType !== 'ALL' ? `(${selectedExamType})` : ''}
+              </h3>
+              <span className="badge badge-neutral">Total Tests: {filteredExamRows.length}</span>
+            </div>
 
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Incident Date</th>
-                <th>Faculty Name</th>
-                <th>Department</th>
-                <th>Status</th>
-                <th>Remark / Observation Details</th>
-                <th>Submitted</th>
-              </tr>
-            </thead>
-            <tbody>
-              {complaints.rows.length === 0 ? (
-                <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
-                    No disciplinary observations or remarks recorded for this student.
-                  </td>
-                </tr>
-              ) : (
-                complaints.rows.map((comp, idx) => (
-                  <tr key={idx}>
-                    <td>{comp.date}</td>
-                    <td style={{ fontWeight: 700 }}>{comp.teacherName}</td>
-                    <td>{comp.department}</td>
-                    <td>
-                      <span className="badge badge-neutral">{comp.status}</span>
-                    </td>
-                    <td style={{ whiteSpace: 'normal', minWidth: '260px' }}>{comp.complaintText}</td>
-                    <td style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{comp.submittedAt}</td>
+            <div className="chart-frame" style={{ height: '260px' }}>
+              <PerformanceTrendChart ref={trendChartRef} trend={filteredTrend} />
+            </div>
+
+            <div className="table-wrap" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Exam Date</th>
+                    <th>Test ID</th>
+                    <th>Exam Type</th>
+                    <th>Marks Obtained</th>
+                    <th>Max Marks</th>
+                    <th>Percentage</th>
+                    <th>Rank</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                </thead>
+                <tbody>
+                  {filteredExamRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No exam records found {selectedExamType !== 'ALL' ? `for ${selectedExamType}` : ''}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredExamRows.map((row, idx) => (
+                      <tr key={idx}>
+                        <td>{row.examDate}</td>
+                        <td style={{ fontWeight: 600 }}>{row.testId}</td>
+                        <td>{row.examType}</td>
+                        <td style={{ fontWeight: 800 }}>{row.totalObtainedMarks}</td>
+                        <td>{row.examTotalMaxMarks}</td>
+                        <td style={{ fontWeight: 700 }}>{row.percentage}%</td>
+                        <td>{row.rank ? `#${row.rank}` : '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Disciplinary Observations & Remarks */}
+          <section className="chart-card">
+            <div className="chart-head">
+              <div>
+                <h3 className="chart-title">Faculty Observations & Remarks</h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  Feedback and academic remarks logged by faculty members
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowComplaintModal(true)}
+              >
+                <PlusCircle size={14} />
+                <span>Add Remark</span>
+              </button>
+            </div>
+
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Incident Date</th>
+                    <th>Faculty Name</th>
+                    <th>Department</th>
+                    <th>Status</th>
+                    <th>Remark / Observation Details</th>
+                    <th>Submitted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {complaints.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
+                        No disciplinary observations or remarks recorded for this student.
+                      </td>
+                    </tr>
+                  ) : (
+                    complaints.rows.map((comp, idx) => (
+                      <tr key={idx}>
+                        <td>{comp.date}</td>
+                        <td style={{ fontWeight: 700 }}>{comp.teacherName}</td>
+                        <td>{comp.department}</td>
+                        <td>
+                          <span className="badge badge-neutral">{comp.status}</span>
+                        </td>
+                        <td style={{ whiteSpace: 'normal', minWidth: '260px' }}>{comp.complaintText}</td>
+                        <td style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{comp.submittedAt}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
 
       {/* Official Institutional Leaderboard Standing (Rendered only when opened from Leaderboard) */}
       {leaderboardContext && (

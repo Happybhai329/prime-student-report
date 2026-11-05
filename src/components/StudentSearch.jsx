@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, X, User, ArrowUpRight, Sparkles, GraduationCap } from 'lucide-react';
+import { Search, X, User, ArrowUpRight, Sparkles, GraduationCap, FileText, CalendarCheck, BookOpenCheck } from 'lucide-react';
+
+// Report type toggle options — the selected mode decides which report opens when a student is picked
+const REPORT_MODES = [
+  { key: 'full', label: 'Full Report', icon: FileText },
+  { key: 'attendance', label: 'Attendance Report', icon: CalendarCheck },
+  { key: 'homework', label: 'Homework Report', icon: BookOpenCheck }
+];
 
 function cleanMobile(raw) {
   if (!raw) return '-';
@@ -25,6 +32,7 @@ export default function StudentSearch({ onSelectStudent, onShowToast }) {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [reportMode, setReportMode] = useState('full'); // 'full' | 'attendance' | 'homework'
   const debounceTimerRef = useRef(null);
   const searchWrapRef = useRef(null);
 
@@ -74,7 +82,7 @@ export default function StudentSearch({ onSelectStudent, onShowToast }) {
 
   const handleSelect = (student) => {
     setShowSuggestions(false);
-    onSelectStudent(student);
+    onSelectStudent(student, reportMode);
   };
 
   const handleFormSubmit = (e) => {
@@ -87,6 +95,30 @@ export default function StudentSearch({ onSelectStudent, onShowToast }) {
 
   return (
     <section className="search-section" ref={searchWrapRef}>
+      {/* Report Type Toggle — decides which report opens for the selected student */}
+      <div className="report-type-switcher-wrap">
+        <span className="report-type-label">Select Report Type</span>
+        <div className="report-type-tabs" role="tablist" aria-label="Report Type">
+          {REPORT_MODES.map((mode) => {
+            const ModeIcon = mode.icon;
+            const isActive = reportMode === mode.key;
+            return (
+              <button
+                key={mode.key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`report-type-tab ${isActive ? 'active' : ''}`}
+                onClick={() => setReportMode(mode.key)}
+              >
+                <ModeIcon size={16} />
+                <span className="report-type-tab-text">{mode.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Search Input Box */}
       <form onSubmit={handleFormSubmit} className="search-box-wrap">
         <Search className="search-icon-left" size={22} />
@@ -197,7 +229,13 @@ export default function StudentSearch({ onSelectStudent, onShowToast }) {
                   style={{ width: '100%', height: '42px', marginTop: '4px' }}
                   onClick={() => handleSelect(student)}
                 >
-                  <span>Open Student Report Card</span>
+                  <span>
+                    {reportMode === 'attendance'
+                      ? 'Open Attendance Report'
+                      : reportMode === 'homework'
+                      ? 'Open Homework Report'
+                      : 'Open Student Report Card'}
+                  </span>
                   <ArrowUpRight size={16} />
                 </button>
               </div>
@@ -235,7 +273,7 @@ export default function StudentSearch({ onSelectStudent, onShowToast }) {
               RIMC &bull; RMS &bull; SAINIK SCHOOL &bull; FOUNDATION
             </p>
             <p style={{ color: 'var(--text-muted)', fontSize: '13.5px', maxWidth: '480px', margin: '10px auto 0', lineHeight: 1.5 }}>
-              Enter any Student ID or Name to generate their official academic progress report, complete with attendance trends, homework completion, subject rankings, and printable PDF cards.
+              Enter any Student ID or Name to generate their official Full Report Card, Attendance Report, or Homework Report — complete with date filtering, attendance trends, homework stats, subject rankings, and printable PDFs.
             </p>
           </div>
         )}

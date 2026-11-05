@@ -21,6 +21,7 @@ export default function App() {
   const [leaderboardContext, setLeaderboardContext] = useState(null);
   const [reportData, setReportData] = useState(null);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [reportMode, setReportMode] = useState('full'); // 'full' | 'attendance' | 'homework'
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [toasts, setToasts] = useState([]);
@@ -75,12 +76,19 @@ export default function App() {
     }
   };
 
-  const handleSelectStudent = (student) => {
+  const handleSelectStudent = (student, mode = 'full') => {
     setSelectedStudent(student);
     setLeaderboardContext(null); // Direct search does not have active leaderboard rank filter
+    setReportMode(mode);
     setStartDate('');
     setEndDate('');
     fetchReport(student.studentId, '', '');
+  };
+
+  // Switching report type never refetches — the report bundle already carries
+  // date-filtered attendance, homework, exam, and complaint data for all modes
+  const handleReportModeChange = (mode) => {
+    setReportMode(mode);
   };
 
   const handleDateFilterChange = (start, end) => {
@@ -126,6 +134,7 @@ export default function App() {
     setSelectedStudent(studentObj);
     setLeaderboardContext(context);
     setCurrentView('report');
+    setReportMode('full'); // Leaderboard always opens the complete report card with verified standing
     const start = context?.startDate || '';
     const end = context?.endDate || '';
     setStartDate(start);
@@ -170,8 +179,20 @@ export default function App() {
           ) : loadingReport && !reportData ? (
             <div style={{ textAlign: 'center', padding: '80px 24px', color: 'var(--text-muted)' }}>
               <div className="spinner spinner-dark" style={{ margin: '0 auto 16px', width: '32px', height: '32px' }} />
-              <h3 style={{ fontSize: '18px', fontWeight: 600 }}>Loading Comprehensive Report...</h3>
-              <p style={{ fontSize: '13px', marginTop: '4px' }}>Calculating attendance, exam rankings, and homework stats</p>
+              <h3 style={{ fontSize: '18px', fontWeight: 600 }}>
+                {reportMode === 'attendance'
+                  ? 'Loading Attendance Report...'
+                  : reportMode === 'homework'
+                  ? 'Loading Homework Report...'
+                  : 'Loading Comprehensive Report...'}
+              </h3>
+              <p style={{ fontSize: '13px', marginTop: '4px' }}>
+                {reportMode === 'attendance'
+                  ? 'Calculating day-wise attendance, presence breakdown, and monthly trends'
+                  : reportMode === 'homework'
+                  ? 'Calculating homework completion, subject stats, and durations'
+                  : 'Calculating attendance, exam rankings, and homework stats'}
+              </p>
             </div>
           ) : (
             <ReportView
@@ -182,6 +203,8 @@ export default function App() {
               onRefreshReport={() => fetchReport(selectedStudent.studentId, startDate, endDate)}
               leaderboardContext={leaderboardContext}
               onBackToLeaderboard={handleBackToLeaderboard}
+              reportMode={reportMode}
+              onReportModeChange={handleReportModeChange}
             />
           )
         )}

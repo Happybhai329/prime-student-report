@@ -3110,3 +3110,104 @@ tr[data-rank="3"] td.sticky-col-name {
     font-size: 14px !important;
   }
 }
+
+/* ==========================================================================
+   Report Type Switcher & Dedicated Mode Navigation
+   ========================================================================== */
+.report-type-switcher-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  width: 100%;
+}
+
+.report-type-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+
+.report-type-tabs {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border: 1.5px solid rgba(124, 58, 237, 0.18);
+  border-radius: 9999px;
+  padding: 4px;
+  gap: 4px;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.report-type-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 18px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.report-type-tab:hover {
+  color: var(--tpc-purple);
+  background: rgba(124, 58, 237, 0.06);
+}
+
+.report-type-tab.active {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+}
+
+.report-type-tab.active svg {
+  stroke: #ffffff;
+}
+
+.report-mode-bar {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(124, 58, 237, 0.2);
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.04);
+}
+
+@media (max-width: 640px) {
+  .report-type-switcher-wrap {
+    margin-bottom: 14px;
+  }
+
+  .report-type-tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    padding: 3px;
+    gap: 3px;
+  }
+
+  .report-type-tab {
+    padding: 8px 4px;
+    font-size: 11.5px;
+    gap: 5px;
+    justify-content: center;
+  }
+
+  .report-type-tab svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .report-mode-bar .filter-chips {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
