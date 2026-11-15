@@ -242,13 +242,14 @@ app.get('/api/students/search', async (req, res) => {
     const { rows } = await query(`
       SELECT student_id, student_name, father_name, batch, class_name, school, mobile, program, dob
       FROM students
-      WHERE LOWER(student_id) LIKE $1 OR LOWER(student_name) LIKE $1
+      WHERE LOWER(student_id) LIKE $1 OR LOWER(student_name) LIKE $1 OR LOWER(batch) LIKE $1
       ORDER BY
         CASE
           WHEN LOWER(student_id) = $2 THEN 1
           WHEN LOWER(student_name) = $2 THEN 2
           WHEN LOWER(student_id) LIKE $3 THEN 3
-          ELSE 4
+          WHEN LOWER(batch) LIKE $3 THEN 4
+          ELSE 5
         END,
         student_name ASC
       LIMIT 25
@@ -310,7 +311,7 @@ app.get('/api/students/:id/report', async (req, res) => {
         ? query('SELECT batch_name, classroom, writing_class, actual_class, subjects_offered FROM batches WHERE LOWER(batch_name) = LOWER($1)', [studentRecord.batch])
         : Promise.resolve({ rows: [] }),
       query('SELECT date, batch, presence_type, teacher_id, teacher_name, call_reason FROM attendance WHERE LOWER(student_id) = LOWER($1)', [studentId]),
-      query('SELECT date, subject, status, final_status, duration_min, teacher_id, teacher_name, start_time, end_time FROM homework WHERE LOWER(student_id) = LOWER($1)', [studentId]),
+      query('SELECT date, batch, subject, status, final_status, duration_min, teacher_id, teacher_name, start_time, end_time FROM homework WHERE LOWER(student_id) = LOWER($1)', [studentId]),
       query(examSql, examParams),
       query('SELECT complaint_id, date, teacher_name, teacher_employee_id, department, student_name, student_id, batch, complaint_text, status, pdf_link, submitted_at FROM complaints WHERE LOWER(student_id) = LOWER($1)', [studentId])
     ]);
@@ -410,6 +411,7 @@ app.get('/api/students/:id/report', async (req, res) => {
       },
       rows: filteredHw.map(r => ({
         date: r.date || '-',
+        batch: r.batch || studentRecord.batch || '-',
         subject: r.subject || '-',
         status: r.status || '-',
         finalStatus: r.final_status || '-',
@@ -528,10 +530,19 @@ app.get('/api/students/:id/report', async (req, res) => {
       endDate
     };
 
+    // Extract all unique batches associated with this student across profile, attendance, homework, and exams
+    const batchSet = new Set();
+    if (studentRecord.batch) batchSet.add(studentRecord.batch.trim());
+    attRes.rows.forEach(r => { if (r.batch && r.batch.trim()) batchSet.add(r.batch.trim()); });
+    hwRes.rows.forEach(r => { if (r.batch && r.batch.trim()) batchSet.add(r.batch.trim()); });
+    examRes.rows.forEach(r => { if (r.batch_name && r.batch_name.trim()) batchSet.add(r.batch_name.trim()); });
+    const availableBatches = Array.from(batchSet).filter(Boolean).sort();
+
     res.json({
       generatedAt: new Date().toISOString(),
       filters,
       profile,
+      availableBatches,
       attendance,
       homework,
       results,

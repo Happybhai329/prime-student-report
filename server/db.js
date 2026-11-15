@@ -268,6 +268,7 @@ async function createTables() {
       id ${idColDef},
       student_id TEXT,
       date TEXT,
+      batch TEXT,
       subject TEXT,
       status TEXT,
       final_status TEXT,
@@ -279,6 +280,11 @@ async function createTables() {
       end_time TEXT
     );
   `);
+  try {
+    await query('ALTER TABLE homework ADD COLUMN IF NOT EXISTS batch TEXT;');
+  } catch {
+    // column already exists or sqlite ignore
+  }
 
   // 7. Exam Results table
   await query(`
@@ -434,6 +440,7 @@ async function createTables() {
 
   // Indexes on homework
   await query(`CREATE INDEX IF NOT EXISTS idx_homework_student_id ON homework(student_id);`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_homework_batch ON homework(batch);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_homework_student_date ON homework(student_id, date);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_homework_subject ON homework(subject);`);
   await query(`CREATE INDEX IF NOT EXISTS idx_homework_date ON homework(date);`);

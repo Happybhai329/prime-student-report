@@ -3211,3 +3211,44 @@ tr[data-rank="3"] td.sticky-col-name {
     grid-template-columns: repeat(3, 1fr);
   }
 }
+
+/* Batch Filter Bar & Multi-Batch Styling */
+.batch-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  background: #ffffff;
+  border: 1.5px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+}
+
+.batch-filter-bar .filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .batch-filter-bar {
+    padding: 14px 12px;
+    gap: 12px;
+  }
+
+  .batch-filter-bar .filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .batch-filter-bar .chip-btn {
+    width: auto;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+}

@@ -162,10 +162,11 @@ export async function runFullInboundSync() {
       await query('DELETE FROM homework');
       await batchInsert(
         'homework',
-        ['student_id', 'date', 'subject', 'status', 'final_status', 'duration_min', 'teacher_id', 'evaluator_id', 'teacher_name', 'start_time', 'end_time'],
+        ['student_id', 'date', 'batch', 'subject', 'status', 'final_status', 'duration_min', 'teacher_id', 'evaluator_id', 'teacher_name', 'start_time', 'end_time'],
         homework.map(h => ({
           student_id: h.studentId,
           date: h.date,
+          batch: h.batch || '',
           subject: h.subject,
           status: h.status,
           final_status: h.finalStatus,

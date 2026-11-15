@@ -268,7 +268,12 @@ function renderPageFooters(doc, reportTitle) {
 // ============================================================================
 // 1. DEDICATED OFFICIAL ATTENDANCE REPORT PDF
 // ============================================================================
-export async function generateAttendanceReportPDF({ reportData, chartImage = null }) {
+export async function generateAttendanceReportPDF({
+  reportData,
+  chartImage = null,
+  selectedBatch = 'ALL',
+  batchBreakdown = []
+}) {
   if (!reportData) return;
   const { profile, attendance, filters } = reportData;
 
@@ -283,29 +288,47 @@ export async function generateAttendanceReportPDF({ reportData, chartImage = nul
   const margin = 36;
   const addHeading = createSectionHeaderAdder(doc);
 
+  // Scope label reflecting active date filter and batch filter
+  const batchScope = selectedBatch && selectedBatch !== 'ALL' ? `Batch: ${selectedBatch}` : 'All Batches Combined';
+  const scopeLabel = `${filters?.label || 'Full History'}  |  ${batchScope}`;
+
   let currentY = await drawInstitutionalHeader(
     doc,
-    'Official Student Attendance Report',
-    filters?.label || 'Full History'
+    selectedBatch && selectedBatch !== 'ALL'
+      ? `Student Attendance Report — Batch ${selectedBatch}`
+      : 'Official Student Attendance Report',
+    scopeLabel
   );
 
   // 1. Student Identity Details
   currentY = addHeading('1. Student Identity & Batch Profile', currentY);
   currentY = renderStudentIdentityTable(doc, profile, currentY);
 
+  // Filter rows if specific batch is chosen
+  let rows = attendance?.rows || [];
+  if (selectedBatch && selectedBatch !== 'ALL') {
+    rows = rows.filter((r) => (r.batch || '').trim().toLowerCase() === selectedBatch.trim().toLowerCase());
+  }
+
+  // Recalculate summary metrics based on active batch filter
+  const totalClasses = rows.length;
+  const present = rows.filter((r) => ATT_PRESENT_RE.test(r.presenceType || '')).length;
+  const absent = rows.filter((r) => ATT_ABSENT_RE.test(r.presenceType || '')).length;
+  const other = Math.max(totalClasses - present - absent, 0);
+  const attendancePercentage = totalClasses ? Number(((present / totalClasses) * 100).toFixed(1)) : 0;
+
   // 2. Attendance Summary Highlights
   currentY = addHeading('2. Attendance Rate & Class Statistics', currentY);
-  const summary = attendance?.summary || {};
   const kpiRows = [
     [
       'Attendance Percentage',
-      `${summary.attendancePercentage || 0}%`,
-      summary.attendancePercentage >= 85 ? 'Outstanding Consistency' : summary.attendancePercentage >= 75 ? 'Good Attendance' : 'Requires Focus & Regularity'
+      `${attendancePercentage}%`,
+      attendancePercentage >= 85 ? 'Outstanding Consistency' : attendancePercentage >= 75 ? 'Good Attendance' : 'Requires Focus & Regularity'
     ],
-    ['Classes Present', `${summary.present || 0} Sessions`, 'Classroom sessions physically/digitally attended'],
-    ['Classes Absent', `${summary.absent || 0} Sessions`, 'Unexcused / recorded absent dates'],
-    ['Leave / Late / Other', `${summary.other || 0} Sessions`, 'Approved medical leaves, sports duty, or recorded late marks'],
-    ['Total Working Sessions', `${summary.totalClasses || 0} Sessions`, 'Total academic sessions conducted in evaluated timeframe']
+    ['Classes Present', `${present} Sessions`, 'Classroom sessions physically/digitally attended'],
+    ['Classes Absent', `${absent} Sessions`, 'Unexcused / recorded absent dates'],
+    ['Leave / Late / Other', `${other} Sessions`, 'Approved medical leaves, sports duty, or recorded late marks'],
+    ['Total Working Sessions', `${totalClasses} Sessions`, `Total sessions in evaluated timeframe (${batchScope})`]
   ];
 
   runAutoTable(doc, {
@@ -334,8 +357,32 @@ export async function generateAttendanceReportPDF({ reportData, chartImage = nul
     }
   }
 
-  // 3. Month-Wise Attendance Breakdown Table
-  const rows = attendance?.rows || [];
+  // 3A. Batch-Wise Attendance Breakdown Table (if student enrolled in multiple batches)
+  if (batchBreakdown && batchBreakdown.length > 1) {
+    currentY = addHeading('3. Batch-Wise Attendance Breakdown', currentY);
+    const batchTableRows = batchBreakdown.map((b) => [
+      b.batchName,
+      `${b.percentage}%`,
+      String(b.present),
+      String(b.absent),
+      String(b.other),
+      String(b.total)
+    ]);
+
+    runAutoTable(doc, {
+      startY: currentY,
+      margin: { left: margin, right: margin },
+      head: [['Batch Name', 'Attendance Rate', 'Present', 'Absent', 'Other/Leave', 'Total Sessions']],
+      body: batchTableRows,
+      theme: 'striped',
+      headStyles: { fillColor: [107, 33, 168], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+      styles: { fontSize: 8, cellPadding: 3.5, halign: 'center' },
+      columnStyles: { 0: { halign: 'left', fontStyle: 'bold', cellWidth: 160 }, 1: { fontStyle: 'bold', textColor: [22, 163, 74] } }
+    });
+    currentY = doc.lastAutoTable.finalY + 14;
+  }
+
+  // 3B. Month-Wise Attendance Progression Table
   const monthMap = {};
   rows.forEach((r) => {
     const dateStr = String(r.date || '');
@@ -352,13 +399,13 @@ export async function generateAttendanceReportPDF({ reportData, chartImage = nul
   const monthlyList = Object.keys(monthMap)
     .map((label) => {
       const b = monthMap[label];
-      const other = Math.max(b.total - b.present - b.absent, 0);
+      const otherCount = Math.max(b.total - b.present - b.absent, 0);
       return {
         month: label,
         sortKey: b.sortKey,
         present: b.present,
         absent: b.absent,
-        other,
+        other: otherCount,
         total: b.total,
         percentage: b.total ? Number(((b.present / b.total) * 100).toFixed(1)) : 0
       };
@@ -366,7 +413,8 @@ export async function generateAttendanceReportPDF({ reportData, chartImage = nul
     .sort((a, b) => b.sortKey - a.sortKey);
 
   if (monthlyList.length > 0) {
-    currentY = addHeading('3. Monthly Attendance Progression', currentY);
+    const sectionIndex = (batchBreakdown && batchBreakdown.length > 1) ? '4' : '3';
+    currentY = addHeading(`${sectionIndex}. Monthly Attendance Progression`, currentY);
     const monthlyRows = monthlyList.map((m) => [
       m.month,
       `${m.percentage}%`,
@@ -389,9 +437,10 @@ export async function generateAttendanceReportPDF({ reportData, chartImage = nul
     currentY = doc.lastAutoTable.finalY + 14;
   }
 
-  // 4. Detailed Day-by-Day Attendance Log
-  currentY = addHeading('4. Complete Day-Wise Attendance Register', currentY);
-  const attLogRows = (rows || []).slice(0, 50).map((r) => {
+  // 4/5. Detailed Day-by-Day Attendance Log
+  const logSectionIndex = (batchBreakdown && batchBreakdown.length > 1) ? '5' : '4';
+  currentY = addHeading(`${logSectionIndex}. Complete Day-Wise Attendance Register`, currentY);
+  const attLogRows = (rows || []).slice(0, 60).map((r) => {
     let statusColor = [71, 85, 105];
     if (ATT_PRESENT_RE.test(r.presenceType)) statusColor = [22, 163, 74];
     else if (ATT_ABSENT_RE.test(r.presenceType)) statusColor = [220, 38, 38];
@@ -409,28 +458,34 @@ export async function generateAttendanceReportPDF({ reportData, chartImage = nul
     startY: currentY,
     margin: { left: margin, right: margin },
     head: [['Date', 'Batch', 'Presence Status', 'Faculty', 'Remarks / Contact Notes']],
-    body: attLogRows.length ? attLogRows : [['No attendance records for selected period.', '-', '-', '-', '-']],
+    body: attLogRows.length ? attLogRows : [['No attendance records for selected period/batch.', '-', '-', '-', '-']],
     theme: 'grid',
     headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
     styles: { fontSize: 7.8, cellPadding: 3 },
-    columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 85 }, 2: { cellWidth: 80 }, 3: { cellWidth: 100 } }
+    columnStyles: { 0: { cellWidth: 70 }, 1: { cellWidth: 100 }, 2: { cellWidth: 75 }, 3: { cellWidth: 100 } }
   });
   currentY = doc.lastAutoTable.finalY + 16;
 
-  // 5. Sign-off and message
+  // Sign-off and message
   currentY = renderInstitutionalSignoff(doc, currentY);
 
-  // 6. Page footers
-  renderPageFooters(doc, 'Official Student Attendance Report');
+  // Page footers
+  renderPageFooters(doc, selectedBatch && selectedBatch !== 'ALL' ? `Attendance Report (${selectedBatch})` : 'Official Student Attendance Report');
 
-  const fileName = `The_Prime_Classes_Attendance_Report_${profile.studentName.replace(/[^a-zA-Z0-9]/g, '_')}_${profile.studentId}.pdf`;
+  const batchSlug = selectedBatch && selectedBatch !== 'ALL' ? `_${selectedBatch.replace(/[^a-zA-Z0-9]/g, '_')}` : '';
+  const fileName = `The_Prime_Classes_Attendance_Report_${profile.studentName.replace(/[^a-zA-Z0-9]/g, '_')}${batchSlug}_${profile.studentId}.pdf`;
   doc.save(fileName);
 }
 
 // ============================================================================
 // 2. DEDICATED OFFICIAL HOMEWORK REPORT PDF
 // ============================================================================
-export async function generateHomeworkReportPDF({ reportData, chartImage = null }) {
+export async function generateHomeworkReportPDF({
+  reportData,
+  chartImage = null,
+  selectedBatch = 'ALL',
+  batchBreakdown = []
+}) {
   if (!reportData) return;
   const { profile, homework, filters } = reportData;
 
@@ -445,30 +500,52 @@ export async function generateHomeworkReportPDF({ reportData, chartImage = null 
   const margin = 36;
   const addHeading = createSectionHeaderAdder(doc);
 
+  // Scope label reflecting active date filter and batch filter
+  const batchScope = selectedBatch && selectedBatch !== 'ALL' ? `Batch: ${selectedBatch}` : 'All Batches Combined';
+  const scopeLabel = `${filters?.label || 'Full History'}  |  ${batchScope}`;
+
   let currentY = await drawInstitutionalHeader(
     doc,
-    'Official Student Homework Completion Report',
-    filters?.label || 'Full History'
+    selectedBatch && selectedBatch !== 'ALL'
+      ? `Student Homework Report — Batch ${selectedBatch}`
+      : 'Official Student Homework Completion Report',
+    scopeLabel
   );
 
   // 1. Student Identity Details
   currentY = addHeading('1. Student Identity & Batch Profile', currentY);
   currentY = renderStudentIdentityTable(doc, profile, currentY);
 
+  // Filter rows if specific batch is chosen
+  let rows = homework?.rows || [];
+  if (selectedBatch && selectedBatch !== 'ALL') {
+    rows = rows.filter((r) => (r.batch || '').trim().toLowerCase() === selectedBatch.trim().toLowerCase());
+  }
+
+  // Recalculate summary metrics based on active batch filter
+  const totalHomework = rows.length;
+  const completedHomework = rows.filter((r) => HW_COMPLETED_RE.test(r.finalStatus || r.status || '')).length;
+  const pendingHomework = rows.filter((r) => HW_PENDING_RE.test(r.finalStatus || r.status || '')).length;
+  const otherHw = Math.max(totalHomework - completedHomework - pendingHomework, 0);
+  const completionRate = totalHomework ? Number(((completedHomework / totalHomework) * 100).toFixed(1)) : 0;
+  const validDurations = rows.map((r) => Number(r.durationMin) || 0).filter((v) => v > 0);
+  const avgDuration = validDurations.length
+    ? Number((validDurations.reduce((a, b) => a + b, 0) / validDurations.length).toFixed(1))
+    : 0;
+
   // 2. Homework Summary Highlights
   currentY = addHeading('2. Homework Completion & Study Statistics', currentY);
-  const summary = homework?.summary || {};
   const kpiRows = [
     [
       'Overall Completion Rate',
-      `${summary.completionRate || 0}%`,
-      summary.completionRate >= 85 ? 'Exemplary Work Ethic' : summary.completionRate >= 70 ? 'Satisfactory Submission' : 'Requires Homework Follow-Up'
+      `${completionRate}%`,
+      completionRate >= 85 ? 'Exemplary Work Ethic' : completionRate >= 70 ? 'Satisfactory Submission' : 'Requires Homework Follow-Up'
     ],
-    ['Completed / Submitted', `${summary.completedHomework || 0} Tasks`, 'Assignments finished and verified by faculty'],
-    ['Pending / Incomplete', `${summary.pendingHomework || 0} Tasks`, 'Tasks overdue or marked incomplete'],
-    ['Other / Partial', `${summary.other || 0} Tasks`, 'Assignments under review or partial credit'],
-    ['Average Daily Duration', `${summary.averageCompletionTime || 0} min`, 'Average time spent per homework assignment'],
-    ['Total Assigned Tasks', `${summary.totalHomework || 0} Tasks`, 'Total assignments issued in evaluated timeframe']
+    ['Completed / Submitted', `${completedHomework} Tasks`, 'Assignments finished and verified by faculty'],
+    ['Pending / Incomplete', `${pendingHomework} Tasks`, 'Tasks overdue or marked incomplete'],
+    ['Other / Partial', `${otherHw} Tasks`, 'Assignments under review or partial credit'],
+    ['Average Daily Duration', `${avgDuration} min`, 'Average time spent per homework assignment'],
+    ['Total Assigned Tasks', `${totalHomework} Tasks`, `Total assignments issued (${batchScope})`]
   ];
 
   runAutoTable(doc, {
@@ -497,8 +574,32 @@ export async function generateHomeworkReportPDF({ reportData, chartImage = null 
     }
   }
 
-  // 3. Subject-Wise Homework Breakdown Table
-  const rows = homework?.rows || [];
+  // 3A. Batch-Wise Homework Breakdown Table (if student enrolled in multiple batches)
+  if (batchBreakdown && batchBreakdown.length > 1) {
+    currentY = addHeading('3. Batch-Wise Homework Breakdown', currentY);
+    const batchTableRows = batchBreakdown.map((b) => [
+      b.batchName,
+      `${b.completionRate}%`,
+      String(b.completed),
+      String(b.pending),
+      b.averageDuration ? `${b.averageDuration} min` : '-',
+      String(b.total)
+    ]);
+
+    runAutoTable(doc, {
+      startY: currentY,
+      margin: { left: margin, right: margin },
+      head: [['Batch Name', 'Completion %', 'Done', 'Pending', 'Avg Time', 'Total Tasks']],
+      body: batchTableRows,
+      theme: 'striped',
+      headStyles: { fillColor: [107, 33, 168], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+      styles: { fontSize: 8, cellPadding: 3.5, halign: 'center' },
+      columnStyles: { 0: { halign: 'left', fontStyle: 'bold', cellWidth: 160 }, 1: { fontStyle: 'bold', textColor: [37, 99, 235] } }
+    });
+    currentY = doc.lastAutoTable.finalY + 14;
+  }
+
+  // 3B. Subject-Wise Homework Breakdown Table
   const subMap = {};
   rows.forEach((r) => {
     const subject = r.subject || 'Unspecified';
@@ -532,7 +633,8 @@ export async function generateHomeworkReportPDF({ reportData, chartImage = null 
     .sort((a, b) => b.total - a.total);
 
   if (subjectList.length > 0) {
-    currentY = addHeading('3. Subject-Wise Homework Completion Breakdown', currentY);
+    const sectionIndex = (batchBreakdown && batchBreakdown.length > 1) ? '4' : '3';
+    currentY = addHeading(`${sectionIndex}. Subject-Wise Homework Completion Breakdown`, currentY);
     const subTableRows = subjectList.map((s) => [
       s.subject,
       `${s.completionRate}%`,
@@ -555,9 +657,10 @@ export async function generateHomeworkReportPDF({ reportData, chartImage = null 
     currentY = doc.lastAutoTable.finalY + 14;
   }
 
-  // 4. Detailed Day-by-Day Homework Task Log
-  currentY = addHeading('4. Complete Homework Submission Register', currentY);
-  const hwLogRows = (rows || []).slice(0, 50).map((r) => {
+  // 4/5. Detailed Day-by-Day Homework Task Log
+  const logSectionIndex = (batchBreakdown && batchBreakdown.length > 1) ? '5' : '4';
+  currentY = addHeading(`${logSectionIndex}. Complete Homework Submission Register`, currentY);
+  const hwLogRows = (rows || []).slice(0, 60).map((r) => {
     const statusStr = r.finalStatus || r.status || '-';
     let statusColor = [71, 85, 105];
     if (HW_COMPLETED_RE.test(statusStr)) statusColor = [22, 163, 74];
@@ -565,6 +668,7 @@ export async function generateHomeworkReportPDF({ reportData, chartImage = null 
 
     return [
       r.date || '-',
+      r.batch || profile.batch || '-',
       r.subject || '-',
       { content: statusStr, styles: { fontStyle: 'bold', textColor: statusColor, halign: 'center' } },
       r.durationMin ? `${r.durationMin} min` : '-',
@@ -575,21 +679,22 @@ export async function generateHomeworkReportPDF({ reportData, chartImage = null 
   runAutoTable(doc, {
     startY: currentY,
     margin: { left: margin, right: margin },
-    head: [['Date', 'Subject', 'Submission Status', 'Duration', 'Faculty In-Charge']],
-    body: hwLogRows.length ? hwLogRows : [['No homework assignments for selected period.', '-', '-', '-', '-']],
+    head: [['Date', 'Batch', 'Subject', 'Submission Status', 'Duration', 'Faculty In-Charge']],
+    body: hwLogRows.length ? hwLogRows : [['No homework assignments for selected period/batch.', '-', '-', '-', '-', '-']],
     theme: 'grid',
     headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
     styles: { fontSize: 7.8, cellPadding: 3 },
-    columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 120, fontStyle: 'bold' }, 2: { cellWidth: 90 }, 3: { cellWidth: 70, halign: 'center' } }
+    columnStyles: { 0: { cellWidth: 70 }, 1: { cellWidth: 95 }, 2: { cellWidth: 95, fontStyle: 'bold' }, 3: { cellWidth: 80 }, 4: { cellWidth: 60, halign: 'center' } }
   });
   currentY = doc.lastAutoTable.finalY + 16;
 
-  // 5. Sign-off and message
+  // Sign-off and message
   currentY = renderInstitutionalSignoff(doc, currentY);
 
-  // 6. Page footers
-  renderPageFooters(doc, 'Official Student Homework Report');
+  // Page footers
+  renderPageFooters(doc, selectedBatch && selectedBatch !== 'ALL' ? `Homework Report (${selectedBatch})` : 'Official Student Homework Report');
 
-  const fileName = `The_Prime_Classes_Homework_Report_${profile.studentName.replace(/[^a-zA-Z0-9]/g, '_')}_${profile.studentId}.pdf`;
+  const batchSlug = selectedBatch && selectedBatch !== 'ALL' ? `_${selectedBatch.replace(/[^a-zA-Z0-9]/g, '_')}` : '';
+  const fileName = `The_Prime_Classes_Homework_Report_${profile.studentName.replace(/[^a-zA-Z0-9]/g, '_')}${batchSlug}_${profile.studentId}.pdf`;
   doc.save(fileName);
 }

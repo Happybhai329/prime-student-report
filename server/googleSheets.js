@@ -253,6 +253,7 @@ export async function fetchRemoteHomework() {
     return {
       studentId: getValue(r, ['studentid', 'studentsid']),
       date: getValue(r, ['date']),
+      batch: getValue(r, ['batch', 'batchname', 'batch_name']),
       subject: getValue(r, ['subject']),
       status: getValue(r, ['status']),
       finalStatus: getValue(r, ['finalstatus']),

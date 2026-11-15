@@ -101,6 +101,7 @@ export default function ReportView({
   const [downloadingAttPdf, setDownloadingAttPdf] = useState(false);
   const [downloadingHwPdf, setDownloadingHwPdf] = useState(false);
   const [selectedExamType, setSelectedExamType] = useState('ALL');
+  const [selectedBatch, setSelectedBatch] = useState('ALL'); // 'ALL' | specific batch name
 
   // Chart references for capturing canvas images
   const attChartRef = useRef(null);
@@ -242,10 +243,139 @@ export default function ReportView({
     }));
   }, [filteredExamRows]);
 
-  // Month-wise attendance aggregation for the dedicated Attendance Report
-  // (classification mirrors the server-side isPresent/isAbsent rules so numbers reconcile)
-  const attendanceMonthly = useMemo(() => {
+  // Available batches across attendance, homework, exams, and profile
+  const availableBatches = useMemo(() => {
+    if (reportData?.availableBatches && reportData.availableBatches.length > 0) {
+      return reportData.availableBatches;
+    }
+    const set = new Set();
+    if (profile?.batch && profile.batch !== '-') set.add(profile.batch.trim());
+    (attendance?.rows || []).forEach((r) => { if (r.batch && r.batch.trim() && r.batch !== '-') set.add(r.batch.trim()); });
+    (homework?.rows || []).forEach((r) => { if (r.batch && r.batch.trim() && r.batch !== '-') set.add(r.batch.trim()); });
+    return Array.from(set).filter(Boolean).sort();
+  }, [reportData, profile, attendance, homework]);
+
+  // Batch-filtered attendance rows
+  const filteredAttRows = useMemo(() => {
+    const allRows = attendance?.rows || [];
+    if (selectedBatch === 'ALL') return allRows;
+    return allRows.filter((r) => (r.batch || '').trim().toLowerCase() === selectedBatch.trim().toLowerCase());
+  }, [attendance, selectedBatch]);
+
+  // Active attendance summary based on selected batch
+  const activeAttSummary = useMemo(() => {
+    if (selectedBatch === 'ALL') return attendance?.summary || {};
+    const totalClasses = filteredAttRows.length;
+    const present = filteredAttRows.filter((r) => ATT_PRESENT_RE.test(r.presenceType || '')).length;
+    const absent = filteredAttRows.filter((r) => ATT_ABSENT_RE.test(r.presenceType || '')).length;
+    const other = Math.max(totalClasses - present - absent, 0);
+    const attendancePercentage = totalClasses ? Number(((present / totalClasses) * 100).toFixed(1)) : 0;
+    return { totalClasses, present, absent, other, attendancePercentage };
+  }, [attendance, filteredAttRows, selectedBatch]);
+
+  // Active attendance chart data based on selected batch
+  const activeAttChartData = useMemo(() => {
+    if (selectedBatch === 'ALL') return attendance?.chart?.data || [0, 0, 0];
+    return [activeAttSummary.present || 0, activeAttSummary.absent || 0, activeAttSummary.other || 0];
+  }, [attendance, activeAttSummary, selectedBatch]);
+
+  // Batch-filtered homework rows
+  const filteredHwRows = useMemo(() => {
+    const allRows = homework?.rows || [];
+    if (selectedBatch === 'ALL') return allRows;
+    return allRows.filter((r) => (r.batch || '').trim().toLowerCase() === selectedBatch.trim().toLowerCase());
+  }, [homework, selectedBatch]);
+
+  // Active homework summary based on selected batch
+  const activeHwSummary = useMemo(() => {
+    if (selectedBatch === 'ALL') return homework?.summary || {};
+    const totalHomework = filteredHwRows.length;
+    const completedHomework = filteredHwRows.filter((r) => HW_COMPLETED_RE.test(r.finalStatus || r.status || '')).length;
+    const pendingHomework = filteredHwRows.filter((r) => HW_PENDING_RE.test(r.finalStatus || r.status || '')).length;
+    const other = Math.max(totalHomework - completedHomework - pendingHomework, 0);
+    const completionRate = totalHomework ? Number(((completedHomework / totalHomework) * 100).toFixed(1)) : 0;
+    const validDurations = filteredHwRows.map((r) => Number(r.durationMin) || 0).filter((v) => v > 0);
+    const avgDuration = validDurations.length
+      ? Number((validDurations.reduce((a, b) => a + b, 0) / validDurations.length).toFixed(1))
+      : 0;
+    return { totalHomework, completedHomework, pendingHomework, other, completionRate, avgDuration };
+  }, [homework, filteredHwRows, selectedBatch]);
+
+  // Active homework chart data based on selected batch
+  const activeHwChartData = useMemo(() => {
+    if (selectedBatch === 'ALL') return homework?.chart?.data || [0, 0, 0];
+    return [activeHwSummary.completedHomework || 0, activeHwSummary.pendingHomework || 0, activeHwSummary.other || 0];
+  }, [homework, activeHwSummary, selectedBatch]);
+
+  // Batch-wise attendance breakdown table (all batches)
+  const attendanceByBatch = useMemo(() => {
     const rows = attendance?.rows || [];
+    const bMap = {};
+    rows.forEach((r) => {
+      const batchName = (r.batch || profile.batch || 'Unspecified').trim();
+      if (!bMap[batchName]) {
+        bMap[batchName] = { total: 0, present: 0, absent: 0, other: 0 };
+      }
+      bMap[batchName].total += 1;
+      if (ATT_PRESENT_RE.test(r.presenceType || '')) bMap[batchName].present += 1;
+      else if (ATT_ABSENT_RE.test(r.presenceType || '')) bMap[batchName].absent += 1;
+      else bMap[batchName].other += 1;
+    });
+
+    return Object.keys(bMap)
+      .map((batchName) => {
+        const item = bMap[batchName];
+        return {
+          batchName,
+          total: item.total,
+          present: item.present,
+          absent: item.absent,
+          other: item.other,
+          percentage: item.total ? Number(((item.present / item.total) * 100).toFixed(1)) : 0
+        };
+      })
+      .sort((a, b) => b.total - a.total);
+  }, [attendance, profile]);
+
+  // Batch-wise homework breakdown table (all batches)
+  const homeworkByBatch = useMemo(() => {
+    const rows = homework?.rows || [];
+    const bMap = {};
+    rows.forEach((r) => {
+      const batchName = (r.batch || profile.batch || 'Unspecified').trim();
+      if (!bMap[batchName]) {
+        bMap[batchName] = { total: 0, completed: 0, pending: 0, other: 0, durations: [] };
+      }
+      bMap[batchName].total += 1;
+      const st = r.finalStatus || r.status || '';
+      if (HW_COMPLETED_RE.test(st)) bMap[batchName].completed += 1;
+      else if (HW_PENDING_RE.test(st)) bMap[batchName].pending += 1;
+      else bMap[batchName].other += 1;
+      const dur = Number(r.durationMin) || 0;
+      if (dur > 0) bMap[batchName].durations.push(dur);
+    });
+
+    return Object.keys(bMap)
+      .map((batchName) => {
+        const item = bMap[batchName];
+        return {
+          batchName,
+          total: item.total,
+          completed: item.completed,
+          pending: item.pending,
+          other: item.other,
+          averageDuration: item.durations.length
+            ? Number((item.durations.reduce((a, b) => a + b, 0) / item.durations.length).toFixed(1))
+            : 0,
+          completionRate: item.total ? Number(((item.completed / item.total) * 100).toFixed(1)) : 0
+        };
+      })
+      .sort((a, b) => b.total - a.total);
+  }, [homework, profile]);
+
+  // Month-wise attendance aggregation for the dedicated Attendance Report (reflects selectedBatch)
+  const attendanceMonthly = useMemo(() => {
+    const rows = filteredAttRows;
     const monthMap = {};
     rows.forEach((r) => {
       const dateStr = String(r.date || '');
@@ -274,12 +404,11 @@ export default function ReportView({
         };
       })
       .sort((a, b) => b.sortKey - a.sortKey);
-  }, [attendance]);
+  }, [filteredAttRows]);
 
-  // Subject-wise homework aggregation for the dedicated Homework Report
-  // (classification mirrors the server-side isCompletedHw/isPendingHw rules)
+  // Subject-wise homework aggregation for the dedicated Homework Report (reflects selectedBatch)
   const homeworkBySubject = useMemo(() => {
-    const rows = homework?.rows || [];
+    const rows = filteredHwRows;
     const subMap = {};
     rows.forEach((r) => {
       const subject = r.subject || 'Unspecified';
@@ -311,7 +440,7 @@ export default function ReportView({
         };
       })
       .sort((a, b) => b.total - a.total);
-  }, [homework]);
+  }, [filteredHwRows]);
 
   // Preset Date Handlers
   const handlePreset = (preset) => {
@@ -793,7 +922,7 @@ export default function ReportView({
     }
   };
 
-  // Dedicated Attendance Report PDF (respects the active date filter)
+  // Dedicated Attendance Report PDF (respects the active date filter and batch filter)
   const handleDownloadAttendancePDF = async () => {
     setDownloadingAttPdf(true);
     onShowToast?.('Preparing Official Student Attendance Report PDF...', 'info');
@@ -801,7 +930,9 @@ export default function ReportView({
     try {
       await generateAttendanceReportPDF({
         reportData,
-        chartImage: attChartRef.current ? attChartRef.current.toBase64Image() : null
+        chartImage: attChartRef.current ? attChartRef.current.toBase64Image() : null,
+        selectedBatch,
+        batchBreakdown: attendanceByBatch
       });
       onShowToast?.('Attendance Report PDF downloaded successfully!', 'success');
     } catch (err) {
@@ -812,7 +943,7 @@ export default function ReportView({
     }
   };
 
-  // Dedicated Homework Report PDF (respects the active date filter)
+  // Dedicated Homework Report PDF (respects the active date filter and batch filter)
   const handleDownloadHomeworkPDF = async () => {
     setDownloadingHwPdf(true);
     onShowToast?.('Preparing Official Student Homework Report PDF...', 'info');
@@ -820,7 +951,9 @@ export default function ReportView({
     try {
       await generateHomeworkReportPDF({
         reportData,
-        chartImage: hwChartRef.current ? hwChartRef.current.toBase64Image() : null
+        chartImage: hwChartRef.current ? hwChartRef.current.toBase64Image() : null,
+        selectedBatch,
+        batchBreakdown: homeworkByBatch
       });
       onShowToast?.('Homework Report PDF downloaded successfully!', 'success');
     } catch (err) {
@@ -1052,6 +1185,58 @@ export default function ReportView({
         </form>
       </section>
 
+      {/* Batch Filter Bar — allows viewing attendance, homework, and academic reports batch-wise separately */}
+      {availableBatches.length > 0 && (
+        <section className="filter-bar batch-filter-bar">
+          <div className="filter-preset-group">
+            <div className="filter-label-group">
+              <Layers size={16} style={{ color: 'var(--tpc-purple)' }} />
+              <span className="filter-title">Filter by Batch:</span>
+            </div>
+            <div className="filter-chips">
+              <button
+                type="button"
+                className={`chip-btn ${selectedBatch === 'ALL' ? 'active' : ''}`}
+                onClick={() => setSelectedBatch('ALL')}
+              >
+                <span>All Batches</span>
+                <span className="chip-badge">
+                  {reportMode === 'attendance'
+                    ? (attendance?.rows || []).length
+                    : reportMode === 'homework'
+                    ? (homework?.rows || []).length
+                    : (results?.rows || []).length}
+                </span>
+              </button>
+              {availableBatches.map((bName) => {
+                const count = reportMode === 'attendance'
+                  ? (attendance?.rows || []).filter(r => (r.batch || '').trim().toLowerCase() === bName.toLowerCase()).length
+                  : reportMode === 'homework'
+                  ? (homework?.rows || []).filter(r => (r.batch || '').trim().toLowerCase() === bName.toLowerCase()).length
+                  : (results?.rows || []).filter(r => (r.batchName || '').trim().toLowerCase() === bName.toLowerCase()).length;
+                return (
+                  <button
+                    key={bName}
+                    type="button"
+                    className={`chip-btn ${selectedBatch === bName ? 'active' : ''}`}
+                    onClick={() => setSelectedBatch(bName)}
+                  >
+                    <span>{bName}</span>
+                    {count > 0 && <span className="chip-badge">{count}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="filter-status-indicator">
+            <span className="badge badge-primary">
+              {selectedBatch === 'ALL' ? 'Scope: All Batches Combined' : `Batch Filter: ${selectedBatch}`}
+            </span>
+          </div>
+        </section>
+      )}
+
       {/* Dynamic Examination Type Filter — only applicable for Full Academic Report */}
       {reportMode === 'full' && (
         <section className="filter-bar exam-filter-bar">
@@ -1090,7 +1275,7 @@ export default function ReportView({
         </section>
       )}
 
-      {/* Key Performance Metric Cards — Tailored for Active Report Mode */}
+      {/* Key Performance Metric Cards — Tailored for Active Report Mode & Active Batch */}
       {reportMode === 'attendance' && (
         <section className="kpi-grid">
           <div className="stat-card accent-success">
@@ -1100,9 +1285,10 @@ export default function ReportView({
                 <CheckCircle size={20} />
               </div>
             </div>
-            <div className="stat-value">{attendance.summary.attendancePercentage || 0}%</div>
+            <div className="stat-value">{activeAttSummary.attendancePercentage || 0}%</div>
             <div className="stat-footer">
-              {attendance.summary.present || 0} of {attendance.summary.totalClasses || 0} Sessions Present
+              {activeAttSummary.present || 0} of {activeAttSummary.totalClasses || 0} Sessions Present
+              {selectedBatch !== 'ALL' && ` (${selectedBatch})`}
             </div>
           </div>
 
@@ -1113,7 +1299,7 @@ export default function ReportView({
                 <CalendarCheck size={20} />
               </div>
             </div>
-            <div className="stat-value">{attendance.summary.present || 0}</div>
+            <div className="stat-value">{activeAttSummary.present || 0}</div>
             <div className="stat-footer">Days / Sessions Attended</div>
           </div>
 
@@ -1124,7 +1310,7 @@ export default function ReportView({
                 <AlertCircle size={20} />
               </div>
             </div>
-            <div className="stat-value" style={{ color: '#dc2626' }}>{attendance.summary.absent || 0}</div>
+            <div className="stat-value" style={{ color: '#dc2626' }}>{activeAttSummary.absent || 0}</div>
             <div className="stat-footer">Unattended / Missed Sessions</div>
           </div>
 
@@ -1135,7 +1321,7 @@ export default function ReportView({
                 <Clock size={20} />
               </div>
             </div>
-            <div className="stat-value">{attendance.summary.other || 0}</div>
+            <div className="stat-value">{activeAttSummary.other || 0}</div>
             <div className="stat-footer">Permitted Leaves / Late / Misc</div>
           </div>
 
@@ -1146,8 +1332,10 @@ export default function ReportView({
                 <Layers size={20} />
               </div>
             </div>
-            <div className="stat-value">{attendance.summary.totalClasses || 0}</div>
-            <div className="stat-footer">Total Classes in Selected Range</div>
+            <div className="stat-value">{activeAttSummary.totalClasses || 0}</div>
+            <div className="stat-footer">
+              {selectedBatch !== 'ALL' ? `Classes in Batch ${selectedBatch}` : 'Total Classes Across All Batches'}
+            </div>
           </div>
         </section>
       )}
@@ -1161,9 +1349,10 @@ export default function ReportView({
                 <CheckCircle size={20} />
               </div>
             </div>
-            <div className="stat-value">{homework.summary.completionRate || 0}%</div>
+            <div className="stat-value">{activeHwSummary.completionRate || 0}%</div>
             <div className="stat-footer">
-              {homework.summary.completedHomework || 0} of {homework.summary.totalHomework || 0} Tasks Completed
+              {activeHwSummary.completedHomework || 0} of {activeHwSummary.totalHomework || 0} Tasks Completed
+              {selectedBatch !== 'ALL' && ` (${selectedBatch})`}
             </div>
           </div>
 
@@ -1174,7 +1363,7 @@ export default function ReportView({
                 <BookOpenCheck size={20} />
               </div>
             </div>
-            <div className="stat-value">{homework.summary.completedHomework || 0}</div>
+            <div className="stat-value">{activeHwSummary.completedHomework || 0}</div>
             <div className="stat-footer">Verified Submissions</div>
           </div>
 
@@ -1185,7 +1374,7 @@ export default function ReportView({
                 <AlertCircle size={20} />
               </div>
             </div>
-            <div className="stat-value" style={{ color: '#dc2626' }}>{homework.summary.pendingHomework || 0}</div>
+            <div className="stat-value" style={{ color: '#dc2626' }}>{activeHwSummary.pendingHomework || 0}</div>
             <div className="stat-footer">Incomplete / Overdue Tasks</div>
           </div>
 
@@ -1197,8 +1386,8 @@ export default function ReportView({
               </div>
             </div>
             <div className="stat-value">
-              {homework.summary.avgDuration
-                ? `${homework.summary.avgDuration} min`
+              {activeHwSummary.avgDuration
+                ? `${activeHwSummary.avgDuration} min`
                 : (homeworkBySubject.length > 0 && homeworkBySubject.some(s => s.averageDuration > 0)
                   ? `${Math.round(homeworkBySubject.reduce((a, b) => a + (b.averageDuration || 0), 0) / (homeworkBySubject.filter(b => b.averageDuration > 0).length || 1))} min`
                   : '-')}
@@ -1213,8 +1402,10 @@ export default function ReportView({
                 <BookOpen size={20} />
               </div>
             </div>
-            <div className="stat-value">{homework.summary.totalHomework || 0}</div>
-            <div className="stat-footer">Total Homework Given in Period</div>
+            <div className="stat-value">{activeHwSummary.totalHomework || 0}</div>
+            <div className="stat-footer">
+              {selectedBatch !== 'ALL' ? `Tasks in Batch ${selectedBatch}` : 'Total Homework Across All Batches'}
+            </div>
           </div>
         </section>
       )}
@@ -1385,18 +1576,19 @@ export default function ReportView({
               <div className="chart-head">
                 <h3 className="chart-title">Attendance Distribution</h3>
                 <span className="badge badge-strong">
-                  {attendance.summary.attendancePercentage || 0}% Present
+                  {activeAttSummary.attendancePercentage || 0}% Present
                 </span>
               </div>
               <div className="chart-frame">
                 <AttendanceChart
                   ref={attChartRef}
                   labels={attendance.chart.labels}
-                  data={attendance.chart.data}
+                  data={activeAttChartData}
                 />
               </div>
               <div style={{ padding: '12px 16px', background: 'var(--bg-main)', borderRadius: '10px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                Overall presence rate: <strong>{attendance.summary.attendancePercentage || 0}%</strong> across {attendance.summary.totalClasses || 0} recorded sessions.
+                Overall presence rate: <strong>{activeAttSummary.attendancePercentage || 0}%</strong> across {activeAttSummary.totalClasses || 0} recorded sessions
+                {selectedBatch !== 'ALL' ? ` in Batch: ${selectedBatch}` : ' (All Batches Combined)'}.
               </div>
             </article>
 
@@ -1424,7 +1616,7 @@ export default function ReportView({
                     {attendanceMonthly.length === 0 ? (
                       <tr>
                         <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                          No monthly attendance records for selected period
+                          No monthly attendance records for selected period/batch
                         </td>
                       </tr>
                     ) : (
@@ -1447,16 +1639,74 @@ export default function ReportView({
             </article>
           </section>
 
+          {/* Batch-Wise Attendance Breakdown — Visible when student has records across multiple batches */}
+          {attendanceByBatch.length > 1 && (
+            <section className="chart-card">
+              <div className="chart-head">
+                <div>
+                  <h3 className="chart-title">Batch-Wise Attendance Performance</h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Comparative attendance breakdown across each enrolled batch (click any batch to filter or view separately)
+                  </p>
+                </div>
+                <span className="badge badge-neutral">{attendanceByBatch.length} Batches</span>
+              </div>
+
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Batch Name</th>
+                      <th>Attendance Rate</th>
+                      <th>Present</th>
+                      <th>Absent</th>
+                      <th>Other / Leave</th>
+                      <th>Total Sessions</th>
+                      <th>Batch View</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attendanceByBatch.map((b, idx) => {
+                      const isBatchActive = selectedBatch.toLowerCase() === b.batchName.toLowerCase();
+                      return (
+                        <tr key={idx} style={{ background: isBatchActive ? 'rgba(124, 58, 237, 0.05)' : 'transparent' }}>
+                          <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{b.batchName}</td>
+                          <td style={{ fontWeight: 800, color: b.percentage >= 75 ? 'var(--tpc-green)' : '#dc2626' }}>
+                            {b.percentage}%
+                          </td>
+                          <td>{b.present}</td>
+                          <td>{b.absent}</td>
+                          <td>{b.other}</td>
+                          <td style={{ fontWeight: 600 }}>{b.total}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className={`btn btn-sm ${isBatchActive ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{ padding: '4px 10px', fontSize: '11.5px' }}
+                              onClick={() => setSelectedBatch(isBatchActive ? 'ALL' : b.batchName)}
+                            >
+                              {isBatchActive ? 'Active (Clear)' : 'View Separately'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           {/* Full Day-by-Day Attendance Register */}
           <section className="chart-card">
             <div className="chart-head">
               <div>
                 <h3 className="chart-title">Complete Day-by-Day Attendance Register</h3>
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Full session log of daily classroom attendance, verified faculty, and observation reasons
+                  Full session log of daily classroom attendance, verified batch, faculty, and observation reasons
                 </p>
               </div>
-              <span className="badge badge-neutral">Total Records: {attendance.rows.length}</span>
+              <span className="badge badge-neutral">Total Records: {filteredAttRows.length}</span>
             </div>
 
             <div className="table-wrap" style={{ maxHeight: '460px', overflowY: 'auto' }}>
@@ -1464,22 +1714,28 @@ export default function ReportView({
                 <thead>
                   <tr>
                     <th>Session Date</th>
+                    <th>Batch</th>
                     <th>Attendance Status</th>
                     <th>Faculty In-Charge</th>
                     <th>Reason / Observation Remarks</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {attendance.rows.length === 0 ? (
+                  {filteredAttRows.length === 0 ? (
                     <tr>
-                      <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
-                        No attendance sessions recorded for the selected date range.
+                      <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
+                        No attendance sessions recorded for the selected date range and batch filter.
                       </td>
                     </tr>
                   ) : (
-                    attendance.rows.map((row, idx) => (
+                    filteredAttRows.map((row, idx) => (
                       <tr key={idx}>
                         <td style={{ fontWeight: 600 }}>{row.date}</td>
+                        <td>
+                          <span className="badge badge-neutral" style={{ fontSize: '11px', fontWeight: 600 }}>
+                            {row.batch || profile.batch || '-'}
+                          </span>
+                        </td>
                         <td>
                           <span
                             className={`badge ${
@@ -1514,18 +1770,19 @@ export default function ReportView({
               <div className="chart-head">
                 <h3 className="chart-title">Homework & Task Completion</h3>
                 <span className="badge badge-primary">
-                  {homework.summary.completionRate || 0}% Completion
+                  {activeHwSummary.completionRate || 0}% Completion
                 </span>
               </div>
               <div className="chart-frame">
                 <HomeworkChart
                   ref={hwChartRef}
                   labels={homework.chart.labels}
-                  data={homework.chart.data}
+                  data={activeHwChartData}
                 />
               </div>
               <div style={{ padding: '12px 16px', background: 'var(--bg-main)', borderRadius: '10px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                Completed <strong>{homework.summary.completedHomework || 0}</strong> of <strong>{homework.summary.totalHomework || 0}</strong> assignments ({homework.summary.completionRate || 0}% completion rate).
+                Completed <strong>{activeHwSummary.completedHomework || 0}</strong> of <strong>{activeHwSummary.totalHomework || 0}</strong> assignments ({activeHwSummary.completionRate || 0}% completion rate)
+                {selectedBatch !== 'ALL' ? ` in Batch: ${selectedBatch}` : ' (All Batches Combined)'}.
               </div>
             </article>
 
@@ -1553,7 +1810,7 @@ export default function ReportView({
                     {homeworkBySubject.length === 0 ? (
                       <tr>
                         <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                          No subject homework records for selected period
+                          No subject homework records for selected period/batch
                         </td>
                       </tr>
                     ) : (
@@ -1576,16 +1833,74 @@ export default function ReportView({
             </article>
           </section>
 
+          {/* Batch-Wise Homework Breakdown — Visible when student has records across multiple batches */}
+          {homeworkByBatch.length > 1 && (
+            <section className="chart-card">
+              <div className="chart-head">
+                <div>
+                  <h3 className="chart-title">Batch-Wise Homework Performance</h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Comparative submission rates and average duration across batches (click any batch to filter or view separately)
+                  </p>
+                </div>
+                <span className="badge badge-neutral">{homeworkByBatch.length} Batches</span>
+              </div>
+
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Batch Name</th>
+                      <th>Completion %</th>
+                      <th>Completed</th>
+                      <th>Pending</th>
+                      <th>Avg Duration</th>
+                      <th>Total Tasks</th>
+                      <th>Batch View</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {homeworkByBatch.map((b, idx) => {
+                      const isBatchActive = selectedBatch.toLowerCase() === b.batchName.toLowerCase();
+                      return (
+                        <tr key={idx} style={{ background: isBatchActive ? 'rgba(124, 58, 237, 0.05)' : 'transparent' }}>
+                          <td style={{ fontWeight: 700, color: 'var(--text-main)' }}>{b.batchName}</td>
+                          <td style={{ fontWeight: 800, color: b.completionRate >= 75 ? 'var(--tpc-green)' : '#dc2626' }}>
+                            {b.completionRate}%
+                          </td>
+                          <td>{b.completed}</td>
+                          <td>{b.pending}</td>
+                          <td>{b.averageDuration ? `${b.averageDuration} min` : '-'}</td>
+                          <td style={{ fontWeight: 600 }}>{b.total}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className={`btn btn-sm ${isBatchActive ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{ padding: '4px 10px', fontSize: '11.5px' }}
+                              onClick={() => setSelectedBatch(isBatchActive ? 'ALL' : b.batchName)}
+                            >
+                              {isBatchActive ? 'Active (Clear)' : 'View Separately'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           {/* Full Homework & Assignment Register */}
           <section className="chart-card">
             <div className="chart-head">
               <div>
                 <h3 className="chart-title">Complete Homework & Assignment Register</h3>
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Full register of all assigned tasks, subjects, submission statuses, and duration logs
+                  Full register of all assigned tasks, batch, subjects, submission statuses, and duration logs
                 </p>
               </div>
-              <span className="badge badge-neutral">Total Tasks: {homework.rows.length}</span>
+              <span className="badge badge-neutral">Total Tasks: {filteredHwRows.length}</span>
             </div>
 
             <div className="table-wrap" style={{ maxHeight: '460px', overflowY: 'auto' }}>
@@ -1593,6 +1908,7 @@ export default function ReportView({
                 <thead>
                   <tr>
                     <th>Assigned Date</th>
+                    <th>Batch</th>
                     <th>Subject</th>
                     <th>Submission Status</th>
                     <th>Estimated Duration</th>
@@ -1600,16 +1916,21 @@ export default function ReportView({
                   </tr>
                 </thead>
                 <tbody>
-                  {homework.rows.length === 0 ? (
+                  {filteredHwRows.length === 0 ? (
                     <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
-                        No homework tasks recorded for the selected date range.
+                      <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
+                        No homework tasks recorded for the selected date range and batch filter.
                       </td>
                     </tr>
                   ) : (
-                    homework.rows.map((row, idx) => (
+                    filteredHwRows.map((row, idx) => (
                       <tr key={idx}>
-                        <td>{row.date}</td>
+                        <td style={{ fontWeight: 600 }}>{row.date}</td>
+                        <td>
+                          <span className="badge badge-neutral" style={{ fontSize: '11px', fontWeight: 600 }}>
+                            {row.batch || profile.batch || '-'}
+                          </span>
+                        </td>
                         <td style={{ fontWeight: 700 }}>{row.subject}</td>
                         <td>
                           <span
