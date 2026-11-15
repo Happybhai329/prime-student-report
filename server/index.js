@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { initDatabase, query, getDbType } from './db.js';
 import { runFullInboundSync, startPeriodicSync, getSyncStatus, submitStudentComplaint } from './syncEngine.js';
 import { getFiltersMeta, getLeaderboardData, getStudentCalculations, invalidateLeaderboardCache } from './leaderboardService.js';
+import { getBatchesList, getBatchReport, invalidateBatchReportCache } from './batchReportService.js';
 import { generateStudentReportPDF } from './pdfGenerator.js';
 import { fetchRemoteEmployees } from './googleSheets.js';
 import { getExamMappingLookup, filterAndRecalculateExamResults } from './subjectFilter.js';
@@ -629,8 +630,37 @@ app.post('/api/sync/trigger', async (req, res) => {
   try {
     const result = await runFullInboundSync();
     invalidateLeaderboardCache();
+    invalidateBatchReportCache();
     res.json(result);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * 7b. Batches Directory & Batch-Wise Reporting
+ */
+app.get('/api/batches', async (req, res) => {
+  try {
+    const batches = await getBatchesList();
+    res.json({ batches });
+  } catch (err) {
+    console.error('Batches list error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/batches/:batch/report', async (req, res) => {
+  try {
+    const batchName = cleanText(req.params.batch);
+    const { startDate, endDate } = req.query;
+    const data = await getBatchReport(batchName, {
+      startDate: cleanText(startDate),
+      endDate: cleanText(endDate)
+    });
+    res.json(data);
+  } catch (err) {
+    console.error('Batch report error:', err);
     res.status(500).json({ error: err.message });
   }
 });

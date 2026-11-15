@@ -698,3 +698,250 @@ export async function generateHomeworkReportPDF({
   const fileName = `The_Prime_Classes_Homework_Report_${profile.studentName.replace(/[^a-zA-Z0-9]/g, '_')}${batchSlug}_${profile.studentId}.pdf`;
   doc.save(fileName);
 }
+
+/**
+ * Generate Official Batch Attendance Report PDF
+ */
+export async function generateBatchAttendanceReportPDF(batchData) {
+  if (!batchData) return;
+  const { batch, dateRange, attendance, enrolledCount, activeStudentCount } = batchData;
+  const doc = new jsPDF('portrait', 'pt', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 36;
+  const contentWidth = pageWidth - margin * 2;
+
+  const dateScopeStr = (dateRange?.startDate || dateRange?.endDate)
+    ? `${dateRange.startDate || 'Beginning'} to ${dateRange.endDate || 'Present'}`
+    : 'All-Time Institutional Cumulative';
+
+  let currentY = await drawInstitutionalHeader(doc, 'BATCH ATTENDANCE PERFORMANCE REPORT', `BATCH: ${batch}`);
+
+  // Summary Banner Box
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(margin, currentY, contentWidth, 54, 4, 4, 'FD');
+
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Batch: ${batch}`, margin + 12, currentY + 18);
+  doc.text(`Active Students: ${activeStudentCount || enrolledCount || 0}`, margin + 12, currentY + 36);
+
+  doc.text(`Total Sessions: ${attendance?.summary?.totalSessions || 0} Days`, margin + 220, currentY + 18);
+  doc.text(`Date Range: ${dateScopeStr}`, margin + 220, currentY + 36);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  const rate = attendance?.summary?.rate ?? 0;
+  if (rate >= 80) doc.setTextColor(22, 163, 74);
+  else if (rate >= 70) doc.setTextColor(217, 119, 6);
+  else doc.setTextColor(220, 38, 38);
+  doc.text(`Batch Attendance: ${rate}%`, margin + contentWidth - 14, currentY + 28, { align: 'right' });
+
+  currentY += 66;
+
+  // KPI Table
+  currentY = addHeading('1. Batch Attendance Summary & Thresholds', currentY);
+  const summary = attendance?.summary || {};
+  runAutoTable(doc, {
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    head: [['Total Records', 'Present', 'Absent', 'Other / Leave', 'Batch Attendance %', 'Regular (>=85%)', 'At-Risk (<75%)']],
+    body: [[
+      String(summary.totalRecords || 0),
+      `${summary.present || 0}`,
+      `${summary.absent || 0}`,
+      `${summary.other || 0}`,
+      { content: `${summary.rate || 0}%`, styles: { fontStyle: 'bold', textColor: [22, 163, 74] } },
+      `${attendance?.highAttendanceCount || 0}`,
+      { content: `${attendance?.atRiskCount || 0}`, styles: { fontStyle: 'bold', textColor: [220, 38, 38] } }
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: [107, 33, 168], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+    styles: { fontSize: 8.5, cellPadding: 4, halign: 'center' }
+  });
+  currentY = doc.lastAutoTable.finalY + 16;
+
+  // Student Attendance Roster Table
+  currentY = addHeading('2. Student-by-Student Attendance Roster', currentY);
+  const rosterRows = (attendance?.students || []).map((s, idx) => {
+    const sRate = s.attendance?.rate ?? 0;
+    let rateColor = [71, 85, 105];
+    if (sRate >= 85) rateColor = [22, 163, 74];
+    else if (sRate >= 70) rateColor = [217, 119, 6];
+    else rateColor = [220, 38, 38];
+
+    return [
+      String(idx + 1),
+      s.studentId,
+      s.studentName,
+      s.className ? `Class ${s.className}` : '-',
+      String(s.attendance?.total || 0),
+      String(s.attendance?.present || 0),
+      String(s.attendance?.absent || 0),
+      { content: `${sRate}%`, styles: { fontStyle: 'bold', textColor: rateColor, halign: 'center' } }
+    ];
+  });
+
+  runAutoTable(doc, {
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    head: [['#', 'Student ID', 'Student Name', 'Class', 'Sessions', 'Present', 'Absent', 'Attendance %']],
+    body: rosterRows.length ? rosterRows : [['-', '-', 'No students found in this batch', '-', '-', '-', '-', '-']],
+    theme: 'striped',
+    headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+    styles: { fontSize: 7.8, cellPadding: 3.5 },
+    columnStyles: {
+      0: { cellWidth: 24, halign: 'center' },
+      1: { cellWidth: 70 },
+      2: { cellWidth: 150, fontStyle: 'bold' },
+      3: { cellWidth: 55, halign: 'center' },
+      4: { cellWidth: 55, halign: 'center' },
+      5: { cellWidth: 55, halign: 'center' },
+      6: { cellWidth: 55, halign: 'center' },
+      7: { cellWidth: 60, halign: 'center' }
+    }
+  });
+  currentY = doc.lastAutoTable.finalY + 18;
+
+  currentY = renderInstitutionalSignoff(doc, currentY);
+  renderPageFooters(doc, `Official Batch Attendance Report — ${batch}`);
+
+  const batchSlug = batch.replace(/[^a-zA-Z0-9]/g, '_');
+  doc.save(`The_Prime_Classes_Batch_Attendance_${batchSlug}.pdf`);
+}
+
+/**
+ * Generate Official Batch Homework Report PDF
+ */
+export async function generateBatchHomeworkReportPDF(batchData) {
+  if (!batchData) return;
+  const { batch, dateRange, homework, enrolledCount, activeStudentCount } = batchData;
+  const doc = new jsPDF('portrait', 'pt', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 36;
+  const contentWidth = pageWidth - margin * 2;
+
+  const dateScopeStr = (dateRange?.startDate || dateRange?.endDate)
+    ? `${dateRange.startDate || 'Beginning'} to ${dateRange.endDate || 'Present'}`
+    : 'All-Time Institutional Cumulative';
+
+  let currentY = await drawInstitutionalHeader(doc, 'BATCH HOMEWORK PERFORMANCE REPORT', `BATCH: ${batch}`);
+
+  // Summary Banner Box
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(margin, currentY, contentWidth, 54, 4, 4, 'FD');
+
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Batch: ${batch}`, margin + 12, currentY + 18);
+  doc.text(`Active Students: ${activeStudentCount || enrolledCount || 0}`, margin + 12, currentY + 36);
+
+  doc.text(`Total Tasks Tracked: ${homework?.summary?.totalAssignments || 0}`, margin + 220, currentY + 18);
+  doc.text(`Date Range: ${dateScopeStr}`, margin + 220, currentY + 36);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  const rate = homework?.summary?.rate ?? 0;
+  if (rate >= 80) doc.setTextColor(22, 163, 74);
+  else if (rate >= 65) doc.setTextColor(217, 119, 6);
+  else doc.setTextColor(220, 38, 38);
+  doc.text(`Batch Homework: ${rate}%`, margin + contentWidth - 14, currentY + 28, { align: 'right' });
+
+  currentY += 66;
+
+  // KPI Summary
+  currentY = addHeading('1. Homework Overall Metrics', currentY);
+  const summary = homework?.summary || {};
+  runAutoTable(doc, {
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    head: [['Total Assignments', 'Completed / Checked', 'Pending / Incomplete', 'Other', 'Batch Completion Rate', 'High Performers (>=80%)']],
+    body: [[
+      String(summary.totalAssignments || 0),
+      `${summary.completed || 0}`,
+      `${summary.pending || 0}`,
+      `${summary.other || 0}`,
+      { content: `${summary.rate || 0}%`, styles: { fontStyle: 'bold', textColor: [37, 99, 235] } },
+      `${homework?.highCompletionCount || 0}`
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+    styles: { fontSize: 8.5, cellPadding: 4, halign: 'center' }
+  });
+  currentY = doc.lastAutoTable.finalY + 16;
+
+  // Subject Breakdown Table
+  if (homework?.subjects?.length) {
+    currentY = addHeading('2. Subject-Wise Homework Completion Rate', currentY);
+    const subRows = homework.subjects.map(s => [
+      s.subject,
+      String(s.total),
+      String(s.completed),
+      String(s.pending),
+      { content: `${s.rate}%`, styles: { fontStyle: 'bold', textColor: [37, 99, 235] } }
+    ]);
+
+    runAutoTable(doc, {
+      startY: currentY,
+      margin: { left: margin, right: margin },
+      head: [['Subject', 'Total Tasks', 'Completed', 'Pending', 'Completion %']],
+      body: subRows,
+      theme: 'striped',
+      headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+      styles: { fontSize: 8, cellPadding: 3.5, halign: 'center' },
+      columnStyles: { 0: { halign: 'left', fontStyle: 'bold', cellWidth: 160 } }
+    });
+    currentY = doc.lastAutoTable.finalY + 16;
+  }
+
+  // Student Homework Roster Table
+  currentY = addHeading('3. Student-by-Student Homework Roster', currentY);
+  const rosterRows = (homework?.students || []).map((s, idx) => {
+    const sRate = s.homework?.rate ?? 0;
+    let rateColor = [71, 85, 105];
+    if (sRate >= 80) rateColor = [22, 163, 74];
+    else if (sRate >= 60) rateColor = [217, 119, 6];
+    else rateColor = [220, 38, 38];
+
+    return [
+      String(idx + 1),
+      s.studentId,
+      s.studentName,
+      s.className ? `Class ${s.className}` : '-',
+      String(s.homework?.total || 0),
+      String(s.homework?.completed || 0),
+      String(s.homework?.pending || 0),
+      { content: `${sRate}%`, styles: { fontStyle: 'bold', textColor: rateColor, halign: 'center' } }
+    ];
+  });
+
+  runAutoTable(doc, {
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    head: [['#', 'Student ID', 'Student Name', 'Class', 'Tasks Given', 'Completed', 'Pending', 'Completion %']],
+    body: rosterRows.length ? rosterRows : [['-', '-', 'No homework records found', '-', '-', '-', '-', '-']],
+    theme: 'striped',
+    headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+    styles: { fontSize: 7.8, cellPadding: 3.5 },
+    columnStyles: {
+      0: { cellWidth: 24, halign: 'center' },
+      1: { cellWidth: 70 },
+      2: { cellWidth: 150, fontStyle: 'bold' },
+      3: { cellWidth: 55, halign: 'center' },
+      4: { cellWidth: 55, halign: 'center' },
+      5: { cellWidth: 55, halign: 'center' },
+      6: { cellWidth: 55, halign: 'center' },
+      7: { cellWidth: 60, halign: 'center' }
+    }
+  });
+  currentY = doc.lastAutoTable.finalY + 18;
+
+  currentY = renderInstitutionalSignoff(doc, currentY);
+  renderPageFooters(doc, `Official Batch Homework Report — ${batch}`);
+
+  const batchSlug = batch.replace(/[^a-zA-Z0-9]/g, '_');
+  doc.save(`The_Prime_Classes_Batch_Homework_${batchSlug}.pdf`);
+}

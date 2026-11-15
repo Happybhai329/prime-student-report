@@ -4,6 +4,7 @@ import TopNavbar from './components/TopNavbar';
 import LoginView from './components/LoginView';
 import StudentSearch from './components/StudentSearch';
 import ReportView from './components/ReportView';
+import BatchReportView from './components/BatchReportView';
 import LeaderboardView from './components/LeaderboardView';
 
 export default function App() {
@@ -17,10 +18,15 @@ export default function App() {
   });
 
   const [currentView, setCurrentView] = useState('report'); // 'report' | 'leaderboard'
+  const [batchesList, setBatchesList] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [selectedBatch, setSelectedBatch] = useState(null);
+  const [batchContext, setBatchContext] = useState(null); // Return to batch after inspecting student
   const [leaderboardContext, setLeaderboardContext] = useState(null);
   const [reportData, setReportData] = useState(null);
+  const [batchReportData, setBatchReportData] = useState(null);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [loadingBatchReport, setLoadingBatchReport] = useState(false);
   const [reportMode, setReportMode] = useState('full'); // 'full' | 'attendance' | 'homework'
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -35,6 +41,22 @@ export default function App() {
     }, 4000);
   };
 
+  // Preload batches list on mount
+  useEffect(() => {
+    async function loadBatches() {
+      try {
+        const res = await fetch('/api/batches');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.batches) setBatchesList(data.batches);
+        }
+      } catch (err) {
+        console.error('Failed to load batches:', err);
+      }
+    }
+    loadBatches();
+  }, []);
+
   const handleLoginSuccess = (faculty) => {
     setTeacher(faculty);
     localStorage.setItem('prime_faculty_session', JSON.stringify(faculty));
@@ -44,12 +66,15 @@ export default function App() {
   const handleLogout = () => {
     setTeacher(null);
     setSelectedStudent(null);
+    setSelectedBatch(null);
+    setBatchContext(null);
     setReportData(null);
+    setBatchReportData(null);
     localStorage.removeItem('prime_faculty_session');
     showToast('Signed out successfully.', 'info');
   };
 
-  // Fetch Report when student or date filter changes
+  // Fetch Student Report
   const fetchReport = async (studentId, start = startDate, end = endDate) => {
     if (!studentId) return;
     setLoadingReport(true);
@@ -76,17 +101,67 @@ export default function App() {
     }
   };
 
+  // Fetch Batch Report
+  const fetchBatchReport = async (batchName, start = startDate, end = endDate) => {
+    if (!batchName) return;
+    setLoadingBatchReport(true);
+
+    try {
+      const params = new URLSearchParams();
+      if (start) params.append('startDate', start);
+      if (end) params.append('endDate', end);
+
+      const url = `/api/batches/${encodeURIComponent(batchName)}/report?${params.toString()}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to fetch batch report');
+      }
+
+      setBatchReportData(data);
+    } catch (err) {
+      console.error('Fetch batch report error:', err);
+      showToast(err.message, 'error');
+    } finally {
+      setLoadingBatchReport(false);
+    }
+  };
+
   const handleSelectStudent = (student, mode = 'full') => {
     setSelectedStudent(student);
-    setLeaderboardContext(null); // Direct search does not have active leaderboard rank filter
+    setSelectedBatch(null);
+    setBatchContext(null);
+    setLeaderboardContext(null);
     setReportMode(mode);
     setStartDate('');
     setEndDate('');
     fetchReport(student.studentId, '', '');
   };
 
-  // Switching report type never refetches — the report bundle already carries
-  // date-filtered attendance, homework, exam, and complaint data for all modes
+  const handleSelectBatch = (batchName, mode = reportMode) => {
+    setSelectedBatch(batchName);
+    setSelectedStudent(null);
+    setBatchContext(null);
+    setLeaderboardContext(null);
+    setReportMode(mode === 'full' ? 'attendance' : mode);
+    fetchBatchReport(batchName, startDate, endDate);
+  };
+
+  const handleSelectStudentFromBatch = (student, mode = reportMode) => {
+    const studentObj = {
+      studentId: student.studentId,
+      studentName: student.studentName,
+      batch: student.batch || selectedBatch,
+      className: student.className
+    };
+    setBatchContext({ batch: selectedBatch, mode: reportMode });
+    setSelectedStudent(studentObj);
+    setLeaderboardContext(null);
+    setReportMode(mode);
+    fetchReport(studentObj.studentId, startDate, endDate);
+  };
+
   const handleReportModeChange = (mode) => {
     setReportMode(mode);
   };
@@ -99,10 +174,21 @@ export default function App() {
     }
   };
 
+  const handleBatchDateFilterChange = (start, end) => {
+    setStartDate(start);
+    setEndDate(end);
+    if (selectedBatch) {
+      fetchBatchReport(selectedBatch, start, end);
+    }
+  };
+
   const handleBackToSearch = () => {
     setSelectedStudent(null);
+    setSelectedBatch(null);
+    setBatchContext(null);
     setLeaderboardContext(null);
     setReportData(null);
+    setBatchReportData(null);
     setStartDate('');
     setEndDate('');
     setCurrentView('report');
@@ -110,8 +196,11 @@ export default function App() {
 
   const handleBackToLeaderboard = () => {
     setSelectedStudent(null);
+    setSelectedBatch(null);
+    setBatchContext(null);
     setLeaderboardContext(null);
     setReportData(null);
+    setBatchReportData(null);
     setStartDate('');
     setEndDate('');
     setCurrentView('leaderboard');
@@ -120,6 +209,19 @@ export default function App() {
   const handleBackNavigation = () => {
     if (leaderboardContext) {
       handleBackToLeaderboard();
+    } else if (batchContext) {
+      // User came from Batch view into individual student — return to Batch view
+      setSelectedStudent(null);
+      setReportData(null);
+      setLeaderboardContext(null);
+      setReportMode(batchContext.mode || 'attendance');
+      setBatchContext(null);
+    } else if (selectedBatch) {
+      // User is in Batch view — return to Search
+      setSelectedBatch(null);
+      setBatchReportData(null);
+      setSelectedStudent(null);
+      setReportData(null);
     } else {
       handleBackToSearch();
     }
@@ -132,9 +234,11 @@ export default function App() {
       batch: student.batch || student.batchName
     };
     setSelectedStudent(studentObj);
+    setSelectedBatch(null);
+    setBatchContext(null);
     setLeaderboardContext(context);
     setCurrentView('report');
-    setReportMode('full'); // Leaderboard always opens the complete report card with verified standing
+    setReportMode('full');
     const start = context?.startDate || '';
     const end = context?.endDate || '';
     setStartDate(start);
@@ -153,11 +257,16 @@ export default function App() {
         teacher={teacher}
         onLogout={handleLogout}
         onBackToSearch={handleBackNavigation}
-        hasActiveStudent={Boolean(selectedStudent)}
+        hasActiveStudent={Boolean(selectedStudent || selectedBatch)}
         isFromLeaderboard={Boolean(leaderboardContext)}
         onShowToast={showToast}
         currentView={currentView}
-        onViewChange={setCurrentView}
+        onViewChange={(view) => {
+          if (view === 'report' && currentView !== 'report') {
+            // Keep current report or search
+          }
+          setCurrentView(view);
+        }}
       />
 
       {/* Main Content Area */}
@@ -171,9 +280,32 @@ export default function App() {
         </div>
 
         {currentView === 'report' && (
-          !selectedStudent ? (
+          !selectedStudent && !selectedBatch ? (
             <StudentSearch
               onSelectStudent={handleSelectStudent}
+              onSelectBatch={handleSelectBatch}
+              batchesList={batchesList}
+              reportMode={reportMode}
+              onReportModeChange={handleReportModeChange}
+              onShowToast={showToast}
+            />
+          ) : selectedBatch && !selectedStudent ? (
+            <BatchReportView
+              batchData={batchReportData}
+              loading={loadingBatchReport}
+              batchesList={batchesList}
+              selectedBatch={selectedBatch}
+              onSelectBatch={handleSelectBatch}
+              reportMode={reportMode}
+              onReportModeChange={handleReportModeChange}
+              onBackToSearch={() => {
+                setSelectedBatch(null);
+                setBatchReportData(null);
+              }}
+              onSelectStudent={handleSelectStudentFromBatch}
+              onDateFilterChange={handleBatchDateFilterChange}
+              startDate={startDate}
+              endDate={endDate}
               onShowToast={showToast}
             />
           ) : loadingReport && !reportData ? (
@@ -228,9 +360,9 @@ export default function App() {
         >
           <div className="mobile-nav-icon-wrap">
             <FileText size={20} />
-            {Boolean(selectedStudent) && <span className="mobile-nav-dot" title="Active student loaded" />}
+            {Boolean(selectedStudent || selectedBatch) && <span className="mobile-nav-dot" title="Active report loaded" />}
           </div>
-          <span className="mobile-nav-label">Student Report</span>
+          <span className="mobile-nav-label">Reports</span>
         </button>
 
         <button
